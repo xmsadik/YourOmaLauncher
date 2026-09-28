@@ -12,8 +12,8 @@ across the whole tree. Nothing is indexed automatically; everything in it is som
 
 Omarchy 4 (Quattro) with `omarchy-shell`; tested on 4.0.4. No other dependencies. The plugin is plain
 QML/JavaScript: it ships no binaries, has no installer script, installs no packages or services, and
-never uses `sudo`. It starts your items the way Omarchy's own launcher does (through `bash -l`
-and `uwsm-app`, with `gtk-launch`, `xdg-open`, `xdg-terminal-exec` or `omarchy launch browser`, and
+never asks for administrator rights. It starts your items the way Omarchy's own launcher does
+(through `bash -l` and `uwsm-app`, with `gtk-launch`, `xdg-open`, `xdg-terminal-exec` or `omarchy launch browser`, and
 `omarchy notification send` if something is missing), uses `omarchy-file-select`
 and `omarchy-launch-editor` for Browse… and "Open config file", and otherwise only runs standard
 tools: `find` and `cat` to read browser bookmarks, and `mkdir`, `cp`, `install` and `rm` inside
