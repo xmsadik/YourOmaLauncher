@@ -4,8 +4,8 @@ A launcher you build yourself, for [Omarchy](https://omarchy.org). Put apps, fil
 commands and links into nested folders, then open any of them from the keyboard with fuzzy search
 across the whole tree. Nothing is indexed automatically; everything in it is something you put there.
 
-> **Status: in development (0.1.0).** Browsing, search, launching and editing from the panel work.
-> Importing bookmarks and the Windows config from the panel comes next. See [PLAN.md](PLAN.md).
+> **Status: in development (0.1.0).** Browsing, search, launching, editing, and importing bookmarks
+> and configs from the panel work. Publishing prep comes next. See [PLAN.md](PLAN.md).
 
 ## Requirements
 
@@ -114,10 +114,29 @@ Settings (`Ctrl+,` in the panel, or `"settings"` at the top of the file): `close
 `maxVisibleItems` (8), `defaultShell` (`null` = your login shell), `rememberLastLocation` (`false`),
 `showHintBar` (`true`).
 
+### Import and export
+
+**Import and export…** (in Settings, or at the bottom of the `Menu` key's menu) offers:
+
+- **Bookmarks from a browser.** Every Chromium-family profile with bookmarks is listed: Chromium,
+  Chrome, Brave, Edge, Vivaldi and Opera, native or Flatpak. Signed-in Chrome's account bookmarks are
+  included. They're added to the current folder as one folder of links. Importing the same profile
+  again replaces that folder's contents, even if you've renamed or moved it since; nothing else is
+  touched. This is a one-time copy, not a sync.
+- **A bookmarks file (HTML).** The export format of Firefox, Chrome and most other browsers. Firefox
+  keeps its bookmarks in a database, so export them first (*Bookmarks → Manage bookmarks → Import
+  and Backup → Export Bookmarks to HTML*).
+- **A config file**, from this launcher or the Windows version. Choose to **add** its items after
+  yours (items with clashing ids get new ones), or to **replace** your tree with it. Your settings
+  are kept either way.
+- **Export my config** saves `youromalauncher-config-<date>.json` into a folder you choose.
+
+Bookmarklets (`javascript:` links) and empty folders are skipped.
+
 ### Coming from the Windows version
 
-Copy your Windows `config.json` over `~/.config/youromalauncher/config.json`. It's converted as it
-loads: nothing is dropped, but items that can't work on Linux as they are (Windows paths, PowerShell
+Import your Windows `config.json` with **Import a config file…**, or copy it over
+`~/.config/youromalauncher/config.json`. It's converted as it loads: nothing is dropped, but items that can't work on Linux as they are (Windows paths, PowerShell
 or cmd commands, run as administrator) are marked with 󰀦, and the status line tells you what to
 change when you select one. Your `usage.json` works unchanged.
 

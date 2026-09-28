@@ -10,6 +10,8 @@ import "../../lib/LaunchPlan.js" as LaunchPlan
 import "../../lib/TargetName.js" as TargetName
 import "../../lib/PathTrimmer.js" as PathTrimmer
 import "../../lib/Listing.js" as Listing
+import "../../lib/Bookmarks.js" as Bookmarks
+import "../../lib/Editing.js" as Editing
 
 // Runs the libraries inside Qt's V4 engine, the one omarchy-shell uses, since the Node tests can't
 // prove V4 accepts the same code. Checks a sample of behaviors against the Node test expectations and
@@ -115,6 +117,17 @@ QtObject {
       check("execArgv", LaunchPlan.execArgv({ argv: ["x"], workingDirectory: "/tmp" }).slice(0, 2).concat(LaunchPlan.execArgv({ argv: ["x"], workingDirectory: "/tmp" }).slice(3)),
         ["bash", "-lc", "youromalauncher", "/tmp", "", "", "x"])
       check("env function", LaunchPlan.planFor(Model.createNode("path", { target: "~/x" }), Model.defaultSettings(), function(n) { return n === "HOME" ? "/h" : undefined }).argv.slice(-1), ["/h/x"])
+      var html = '<DL><p><DT><H3>Dev</H3><DL><p><DT><A HREF="https://a.example/?x=1&amp;y=2">A &#x1F680;</A></DL><p><DT><A HREF="javascript:x">J</A></DL>'
+      for (var pass = 0; pass < 2; pass++) {   // twice: the tokenizer's global regex must start over
+        var ns = Bookmarks.parseNetscape(html, "X")
+        check("netscape " + pass, [ns.ok, ns.folder.children[0].name, ns.folder.children[0].children[0].name, ns.folder.children[0].children[0].target],
+          [true, "Dev", "A 🚀", "https://a.example/?x=1&y=2"])
+      }
+      var cr = Bookmarks.parseChromium([JSON.stringify({ roots: { bookmark_bar: { children: [{ type: "url", name: "", url: "https://h.example/p" }] } } })], "C")
+      check("chromium", [cr.ok, cr.folder.children[0].name, cr.folder.children[0].children[0].name], [true, "Bookmarks bar", "h.example"])
+      check("bookmark sources", Bookmarks.sources(Bookmarks.userDataDirs("/c", "/h"), ["/c/chromium/Profile 2/Bookmarks", "/c/chromium/Default/Bookmarks"], {}).map(function(x) { return x.displayName }),
+        ["Chromium (Default)", "Chromium (Profile 2)"])
+      check("editing form", Editing.isValid(Editing.emptyForm("url")), false)
       check("newId", /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(Model.newId()), true)
 
       // Timing in V4 itself.

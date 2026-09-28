@@ -71,6 +71,11 @@ Scope {
     return save()
   }
 
+  // After an import or an edit that may add or clear review notes.
+  function refreshNotes() {
+    store.notes = ConfigSerializer.collectNotes(store.config.root)
+  }
+
   // Replaces a damaged config.json with the backup, if the backup itself is good.
   function restoreBackup() {
     backupFile.reload()
@@ -129,7 +134,7 @@ Scope {
 
   function apply(result) {
     store.config = result.config
-    store.notes = result.notes
+    store.notes = ConfigSerializer.collectNotes(result.config.root)
     store.error = ""
     store.loaded = true
     store.configReplaced()

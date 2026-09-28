@@ -127,9 +127,16 @@ Verified live with `wtype` in omarchy-shell 4.0.4: every shortcut above, type pi
 
 ### Phase 4 — Import and migration (1 day)
 - [x] Windows config migration logic (done in Phase 1, `ConfigSerializer.js`)
-- [ ] **Windows config import** UI: pick the old `config.json`, then merge or replace. Keep folders, URLs and the tree. Flag nodes with Windows paths (`C:\`, `%APPDATA%`) as "needs attention" instead of dropping them. Drop `runAsAdmin`. Map `pwsh`/`cmd` commands to the default shell, flagged for review.
-- [ ] Chromium/Chrome/Brave bookmark import (`~/.config/chromium/Default/Bookmarks`, including AccountBookmarks) and Netscape HTML import
-- [ ] Export
+- [x] **Windows config import** UI: pick the old `config.json`, then merge or replace (`ui/ImportPage.qml`). The migration flags Windows paths, `pwsh`/`cmd` commands and `runAsAdmin` with review notes (Phase 1). Replace keeps the current settings.
+- [x] Chromium-family bookmark import (`lib/Bookmarks.js`): Chromium, Chrome (+Beta/Dev), Brave, Edge, Vivaldi, Opera, native and Flatpak; `AccountBookmarks` + `Bookmarks` merged; profile names from `Local State`. Found with one `find`, read with `cat` one file at a time (never blocks the shell). Re-import finds its folder by id (`bookmarks:<source>`) and replaces only its contents. Netscape HTML import with the Windows app's tolerant tokenizer. Every Windows xUnit case ported, plus Linux discovery tests (34 tests).
+- [x] Export: `youromalauncher-config-<date>.json` into a chosen folder
+- [x] Review notes are now collected from the whole tree (`ConfigSerializer.collectNotes`), not only during a migration, so the "N items need a look" hint survives a reload and covers imported items.
+
+Verified live: browser discovery (found the installed Chrome profile), importing it (count matches an independent count of the file) and re-importing it ("Updates …", same folder, no duplicate). **Not verified live:** the three flows that start in the file chooser (HTML file, config file, export). GTK's dialog ignores typed paths under `wtype`, and `/usr/share/omarchy/bin` is first on the shell's `PATH`, so a stub chooser isn't possible. Their parsing is tested; the wiring needs one manual pass.
+
+**Findings:**
+- Firefox keeps bookmarks in `places.sqlite`, which QML can't read without a new dependency (`sqlite3`), so Firefox goes through its HTML export (documented in the README).
+- The context menu gained Home/End.
 
 ### Phase 5 — Polish and publish prep (1 day)
 - [ ] README: *(usage, keys, config format, install/update/remove written in Phase 2)* screenshots, **install** (`omarchy plugin add <url> --enable`), **Hyprland bind snippet**, config format, keyboard reference, **removal** (`omarchy plugin remove <id>` plus deleting `~/.config/youromalauncher`)

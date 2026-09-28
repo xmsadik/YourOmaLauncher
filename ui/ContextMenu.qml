@@ -3,8 +3,8 @@ import qs.Commons
 import qs.Ui
 
 // A small menu for the selected row (right-click, or the Menu key / Shift+F10). Items are
-// { action, label, shortcut, enabled, destructive, separatorBefore }. ↑↓ move, Enter picks, Esc
-// closes; a click outside closes too (the launcher handles that).
+// { action, label, shortcut, enabled, destructive, separatorBefore }. ↑↓ move (Home/End: first/last),
+// Enter picks, Esc closes; a click outside closes too (the launcher handles that).
 BorderSurface {
   id: root
 
@@ -34,6 +34,8 @@ BorderSurface {
     if (event.key === Qt.Key_Escape || event.key === Qt.Key_Menu) root.closed()
     else if (event.key === Qt.Key_Up) root.index = firstEnabled(root.index - 1, -1)
     else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) root.index = firstEnabled(root.index + 1, 1)
+    else if (event.key === Qt.Key_Home) root.index = firstEnabled(0, 1)
+    else if (event.key === Qt.Key_End) root.index = firstEnabled(root.items.length - 1, -1)
     else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
       var item = root.items[root.index]
       if (item && item.enabled !== false) root.chosen(item.action)

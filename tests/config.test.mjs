@@ -281,3 +281,17 @@ test("the Linux example config loads cleanly", () => {
   assert.deepEqual(result.notes, [])
   assert.ok(result.config.root.children.length > 0)
 })
+
+test("collectNotes finds review notes anywhere in the tree, including ones saved earlier", () => {
+  const Model = load("Model")
+  const ConfigSerializer = load("ConfigSerializer")
+  const root = Model.createNode("folder", { id: "root", name: "Root", children: [
+    Model.createNode("url", { id: "a", name: "A", reviewNote: "check a" }),
+    Model.createNode("folder", { id: "f", name: "F", children: [Model.createNode("path", { id: "b", name: "B", reviewNote: "check b" })] }),
+    Model.createNode("url", { id: "c", name: "C" }) ] })
+  assert.deepEqual(ConfigSerializer.collectNotes(root), [
+    { id: "a", name: "A", message: "check a" }, { id: "b", name: "B", message: "check b" }])
+  const reread = ConfigSerializer.deserialize(ConfigSerializer.serialize({ ...Model.createConfig(), root }))
+  assert.deepEqual(reread.notes, [])                                  // not a migration…
+  assert.equal(ConfigSerializer.collectNotes(reread.config.root).length, 2)   // …but the notes are still there
+})

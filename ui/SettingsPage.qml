@@ -13,6 +13,7 @@ FocusScope {
   signal changed(string key, var value)
   signal closed()
   signal openConfigRequested()
+  signal importExportRequested()
 
   implicitHeight: column.implicitHeight
 
@@ -110,7 +111,7 @@ FocusScope {
       height: openButton.height
       Text {
         anchors.left: parent.left
-        anchors.right: openButton.left
+        anchors.right: transferButton.left
         anchors.rightMargin: Style.space(8)
         anchors.verticalCenter: parent.verticalCenter
         elide: Text.ElideLeft
@@ -119,6 +120,17 @@ FocusScope {
         color: Util.alpha(Color.menu.text, 0.45)
         font.family: Style.font.menuFamily
         font.pixelSize: Style.font.caption
+      }
+      Button {
+        id: transferButton
+        focusable: true
+        anchors.right: openButton.left
+        anchors.rightMargin: Style.space(6)
+        text: "Import and export…"
+        bordered: true
+        foreground: Color.menu.text
+        fontFamily: Style.font.menuFamily
+        onClicked: root.importExportRequested()
       }
       Button {
         id: openButton

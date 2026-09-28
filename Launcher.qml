@@ -12,6 +12,8 @@ import "lib/TreeOps.js" as TreeOps
 import "lib/PathTrimmer.js" as PathTrimmer
 import "lib/Model.js" as Model
 import "lib/Editing.js" as Editing
+import "lib/Bookmarks.js" as Bookmarks
+import "lib/ConfigSerializer.js" as ConfigSerializer
 import "ui"
 
 // The launcher panel. Two modes:
@@ -37,13 +39,15 @@ Item {
   property var usageScores: ({})
   property var pendingLocation: null   // folder ids to open once the config has loaded
 
-  property string page: "list"         // list | type | editor | apps | icon | settings
+  property string page: "list"         // list | type | editor | apps | icon | settings | transfer
   property string editId: ""           // the node the editor or icon page works on; "" = a new one
   property var pendingDelete: null     // node waiting for "Delete?" confirmation
   property string cutId: ""            // Ctrl+X'd node, moved by Ctrl+V
   property bool menuOpen: false
   property var menuNode: null          // what the context menu acts on (null: the folder itself)
   property string browseFor: ""        // the field a running file chooser fills in
+  property var pendingImport: null     // a config file read for import, waiting for merge or replace
+  property var readQueue: []           // readFiles() jobs, one file at a time
 
   readonly property var settings: store.config.settings
   readonly property bool searching: filterText.trim().length > 0
@@ -241,6 +245,7 @@ Item {
     else if (root.page === "apps") appPicker.takeFocus()
     else if (root.page === "icon") iconPage.takeFocus()
     else if (root.page === "settings") settingsPage.takeFocus()
+    else if (root.page === "transfer") importPage.takeFocus()
     else keyCatcher.forceActiveFocus()
   }
 
@@ -258,6 +263,7 @@ Item {
   // After an in-place change to the tree: save, and list it again with `keepNode` selected.
   function commit(keepNode, text) {
     store.save()
+    store.refreshNotes()
     root.searchIndex = null
     root.inform(text || "")
     root.refresh(keepNode)
@@ -428,11 +434,11 @@ Item {
   }
 
   // Browse…: the portal file chooser is an ordinary window, so the panel steps aside while it's open.
-  function browse(field, directory) {
+  function browse(field, directory, title, extensions) {
     root.browseFor = field
-    var argv = ["omarchy-file-select", "--title", field === "icon" ? "Choose an image" : directory ? "Choose a folder" : "Choose a file"]
+    var argv = ["omarchy-file-select", "--title", title || (directory ? "Choose a folder" : "Choose a file")]
     if (directory) argv.push("--directory")
-    if (field === "icon") argv.push("--extensions", "png svg jpg jpeg webp")
+    if (extensions) argv.push("--extensions", extensions)
     chooser.command = argv
     chooser.running = true
   }
@@ -441,7 +447,160 @@ Item {
     var path = String(text || "").split("\n")[0]
     if (!path) return
     if (root.browseFor === "icon") iconPage.setFile(path)
+    else if (root.browseFor === "bookmarksHtml") root.importHtmlFile(path)
+    else if (root.browseFor === "config") root.readConfigFile(path)
+    else if (root.browseFor === "export") root.exportTo(path)
     else editor.setField(root.browseFor, root.tildePath(path))
+  }
+
+  // ---- reading files ----
+
+  // Reads each path in turn and calls done(texts), with null for any that couldn't be read (or is
+  // empty). Asynchronous, so a big bookmarks file never stalls the shell.
+  function readFiles(paths, done) {
+    root.readQueue.push({ paths: paths.slice(), texts: [], done: done })
+    if (root.readQueue.length === 1) root.readNext()
+  }
+
+  function readNext() {
+    var job = root.readQueue[0]
+    if (!job) return
+    if (job.texts.length === job.paths.length) {
+      root.readQueue.shift()
+      job.done(job.texts)
+      root.readNext()
+      return
+    }
+    reader.command = ["cat", "--", job.paths[job.texts.length]]
+    reader.running = true
+  }
+
+  function readDone(text) {
+    var job = root.readQueue[0]
+    if (!job) return
+    job.texts.push(text ? text : null)
+    Qt.callLater(root.readNext)   // let the Process finish before it's started again
+  }
+
+  function baseName(path) {
+    return String(path).substring(String(path).lastIndexOf("/") + 1)
+  }
+
+  // ---- import and export ----
+
+  function startTransfer() {
+    root.message = ""
+    importPage.folderName = root.folderPath.length > 1 ? root.currentFolder.name : ""
+    importPage.pendingConfig = null
+    importPage.sources = null
+    importPage.index = 0
+    root.pendingImport = null
+    root.showPage("transfer")
+    var home = String(root.env("HOME") || "")
+    var configHome = String(root.env("XDG_CONFIG_HOME") || "") || home + "/.config"
+    var dirs = Bookmarks.userDataDirs(configHome, home)
+    finder.dirs = dirs
+    finder.command = Bookmarks.findCommand(dirs)
+    finder.running = true
+  }
+
+  function foundBookmarkFiles(text) {
+    var paths = String(text || "").split("\n").filter(function(p) { return p.length > 0 })
+    var dirs = finder.dirs
+    var localStates = paths.filter(function(p) { return root.baseName(p) === "Local State" })
+    root.readFiles(localStates, function(texts) {
+      var states = {}
+      localStates.forEach(function(p, i) { states[p.substring(0, p.lastIndexOf("/"))] = texts[i] || "" })
+      var sources = Bookmarks.sources(dirs, paths, states)
+      // A re-import updates the folder from last time; show its current name.
+      var previous = {}
+      sources.forEach(function(s) {
+        var folder = root.nodeById(Bookmarks.importedFolderId(s.sourceKey))
+        if (folder && folder.type === "folder") previous[s.sourceKey] = folder.name
+      })
+      importPage.previousImports = previous
+      importPage.sources = sources
+      importPage.index = importPage.step(-1, 1)   // start on the first browser found
+    })
+  }
+
+  function importSource(source) {
+    if (!root.canEdit()) return
+    root.readFiles(source.paths, function(texts) {
+      if (texts.indexOf(null) >= 0) {
+        root.message = "Couldn't read the bookmarks of " + source.displayName + "."
+        return
+      }
+      root.addBookmarks(Bookmarks.parseChromium(texts, source.displayName + " bookmarks"), source.sourceKey, source.displayName)
+    })
+  }
+
+  function importHtmlFile(path) {
+    if (!root.canEdit()) return
+    root.readFiles([path], function(texts) {
+      if (texts[0] === null) {
+        root.message = "Couldn't read " + path + "."
+        return
+      }
+      root.addBookmarks(Bookmarks.parseNetscape(texts[0], "Bookmarks (" + root.baseName(path) + ")"),
+                        Bookmarks.htmlSourceKey(path), root.baseName(path))
+    })
+  }
+
+  function addBookmarks(parsed, sourceKey, from) {
+    if (!parsed.ok) {
+      root.message = parsed.error
+      return
+    }
+    if (parsed.folder.children.length === 0) {
+      root.message = "No bookmarks found in " + from + "."
+      return
+    }
+    var result = Bookmarks.apply(store.config.root, root.currentFolder, parsed.folder, sourceKey)
+    root.filterText = ""
+    root.showPage("list")
+    root.commit(result.folder, (result.replaced ? "Updated “" + result.folder.name + "” with " : "Imported ")
+      + result.count + (result.count === 1 ? " bookmark" : " bookmarks") + " from " + from + ".")
+  }
+
+  function readConfigFile(path) {
+    if (!root.canEdit()) return
+    root.readFiles([path], function(texts) {
+      var result = texts[0] === null ? { ok: false, error: "it can't be read." } : ConfigSerializer.deserialize(texts[0])
+      if (!result.ok) {
+        root.message = root.baseName(path) + ": " + result.error
+        return
+      }
+      root.pendingImport = result
+      importPage.pendingConfig = {
+        fileName: root.baseName(path),
+        count: TreeOps.countDescendants(result.config.root),
+        notes: ConfigSerializer.collectNotes(result.config.root).length
+      }
+    })
+  }
+
+  // Merge appends the imported top level after yours (ids that clash get new ones); replace swaps the
+  // whole tree but keeps your settings. Either way you land at the top level.
+  function finishConfigImport(replace) {
+    var imported = root.pendingImport
+    root.pendingImport = null
+    if (!imported || !root.canEdit()) return
+    var count = TreeOps.countDescendants(imported.config.root)
+    if (replace) store.config.root = imported.config.root
+    else TreeOps.merge(store.config.root, imported.config.root)
+    if (root.cutId && !root.nodeById(root.cutId)) root.cutId = ""
+    root.folderPath = [store.config.root]
+    root.filterText = ""
+    root.showPage("list")
+    root.commit(null, (replace ? "Replaced your launcher with " : "Added ") + count + (count === 1 ? " item." : " items."))
+  }
+
+  function exportTo(directory) {
+    var d = new Date()
+    function two(n) { return (n < 10 ? "0" : "") + n }
+    exportFile.path = directory + "/youromalauncher-config-" + d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate()) + ".json"
+    exportFile.setText(ConfigSerializer.serialize(store.config))
   }
 
   // /home/me/x → ~/x, which keeps the config usable under another user name.
@@ -475,6 +634,7 @@ Item {
     items.push({ action: "newFolder", label: "New folder…", shortcut: "Ctrl+Shift+N", enabled: editable })
     if (node) items.push({ action: "delete", label: "Delete…", shortcut: "Del", enabled: editable, destructive: true, separatorBefore: true })
     items.push({ action: "settings", label: "Settings", shortcut: "Ctrl+,", separatorBefore: true })
+    items.push({ action: "transfer", label: "Import and export…" })
     return items
   }
 
@@ -513,6 +673,7 @@ Item {
     else if (action === "newFolder") root.startNew("folder")
     else if (action === "delete") root.askDelete(node)
     else if (action === "settings") root.showPage("settings")
+    else if (action === "transfer") root.startTransfer()
   }
 
   // ---- keyboard ----
@@ -624,6 +785,36 @@ Item {
       onStreamFinished: root.browsed(text)
     }
     onRunningChanged: if (!running) Qt.callLater(root.refocus)
+  }
+
+  // Lists browser bookmark files (Bookmarks.findCommand); missing browsers only complain on stderr.
+  Process {
+    id: finder
+    property var dirs: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.foundBookmarkFiles(text)
+    }
+  }
+
+  Process {
+    id: reader
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.readDone(text)
+    }
+  }
+
+  FileView {
+    id: exportFile
+    blockLoading: false
+    atomicWrites: true
+    printErrors: false
+    onSaved: {
+      root.message = ""
+      root.inform("Exported to " + root.tildePath(path) + ".")
+    }
+    onSaveFailed: function(err) { root.message = "Couldn't export to " + path + ": " + FileViewError.toString(err) }
   }
 
   Process {
@@ -968,7 +1159,7 @@ Item {
           env: root.env
           onSaveRequested: function(icon) { root.saveIcon(icon) }
           onCanceled: root.showPage("list")
-          onBrowseRequested: root.browse("icon", false)
+          onBrowseRequested: root.browse("icon", false, "Choose an image", "png svg jpg jpeg webp")
         }
 
         SettingsPage {
@@ -979,15 +1170,29 @@ Item {
           configPath: store.configPath
           onChanged: function(key, value) { root.changeSetting(key, value) }
           onClosed: root.showPage("list")
+          onImportExportRequested: root.startTransfer()
           onOpenConfigRequested: {
             Quickshell.execDetached(["uwsm-app", "--", "omarchy-launch-editor", store.configPath])
             root.close()
           }
         }
 
+        ImportPage {
+          id: importPage
+          width: parent.width
+          visible: root.page === "transfer"
+          onImportSource: function(source) { root.importSource(source) }
+          onImportHtml: root.browse("bookmarksHtml", false, "Choose a bookmarks file", "html htm")
+          onImportConfig: root.browse("config", false, "Choose a launcher config file", "json")
+          onExportConfig: root.browse("export", true, "Choose where to save the export")
+          onMergeConfig: root.finishConfigImport(false)
+          onReplaceConfig: root.finishConfigImport(true)
+          onClosed: root.showPage("list")
+        }
+
         Text {
           width: parent.width
-          visible: root.statusText.length > 0 && (root.page === "list" || store.readOnly)
+          visible: root.statusText.length > 0 && (root.page === "list" || root.page === "transfer" || store.readOnly)
           textFormat: Text.PlainText
           text: root.statusText
           wrapMode: Text.Wrap
