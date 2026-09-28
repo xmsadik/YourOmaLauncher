@@ -6,8 +6,7 @@ across the whole tree. Nothing is indexed automatically; everything in it is som
 
 ![The launcher: a folder of apps, files, links and commands, and a search across the whole tree](preview.png)
 
-> **Status: 0.1.0, feature-complete and in final testing before its first release.** See
-> [PLAN.md](PLAN.md).
+> **Version 1.0.0.** Tested on Omarchy 4.0.4. How it was built and verified: [PLAN.md](PLAN.md).
 
 ## Requirements
 
