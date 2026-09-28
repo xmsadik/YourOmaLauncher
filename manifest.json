@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.xmsadik.youromalauncher",
+  "name": "YourOmaLauncher",
+  "version": "0.1.0",
+  "author": "xmsadik",
+  "license": "MIT",
+  "homepage": "https://github.com/xmsadik/YourOmaLauncher",
+  "description": "A launcher you build yourself: nested folders of apps, files, folders, shell commands and links, with fuzzy search across the whole tree. Nothing is indexed automatically; everything in it is something you put there. Keyboard-first, follows your Omarchy theme.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Launcher.qml"
+  }
+}
