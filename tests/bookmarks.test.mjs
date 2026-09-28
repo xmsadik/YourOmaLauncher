@@ -172,6 +172,7 @@ test("netscape: a link title with markup keeps only its text", () => {
 const root = (...children) => Model.createNode("folder", { id: "root", name: "Root", children })
 const folder = (id, name, ...children) => Model.createNode("folder", { id, name, children })
 const link = (name, target) => Model.createNode("url", { name, target })
+const CHROME = Bookmarks.importedFolderId("chrome/default")
 const imported = (...children) => Model.createNode("folder", { name: "Chrome bookmarks", children })
 
 test("apply: a first import is appended to the target folder with a deterministic id", () => {
@@ -181,7 +182,7 @@ test("apply: a first import is appended to the target folder with a deterministi
   assert.equal(res.replaced, false)
   assert.equal(res.count, 2)
   assert.equal(res.folder, imp)
-  assert.equal(imp.id, "bookmarks:chrome/default")
+  assert.equal(imp.id, CHROME)
   assert.deepEqual(r.children, [imp])
 })
 
@@ -195,7 +196,7 @@ test("apply: the target can be any folder", () => {
 })
 
 test("apply: importing again replaces the contents in place, keeping name and position", () => {
-  const existing = folder("bookmarks:chrome/default", "My Renamed Bookmarks", link("Old", "https://old.example"))
+  const existing = folder(CHROME, "My Renamed Bookmarks", link("Old", "https://old.example"))
   const r = root(existing, folder("sibling", "Sibling"))
   const res = Bookmarks.apply(r, r, imported(link("New", "https://new.example")), "chrome/default")
   assert.equal(res.replaced, true)
@@ -207,7 +208,7 @@ test("apply: importing again replaces the contents in place, keeping name and po
 })
 
 test("apply: the previous import is found even after being moved", () => {
-  const moved = folder("bookmarks:chrome/default", "Chrome bookmarks", link("Old", "https://old.example"))
+  const moved = folder(CHROME, "Chrome bookmarks", link("Old", "https://old.example"))
   const r = root(folder("other", "Other", moved))
   const res = Bookmarks.apply(r, r, imported(link("New", "https://new.example")), "chrome/default")
   assert.equal(res.replaced, true)
@@ -216,11 +217,11 @@ test("apply: the previous import is found even after being moved", () => {
 })
 
 test("apply: another source doesn't match", () => {
-  const r = root(folder("bookmarks:chrome/default", "Chrome bookmarks", link("Old", "https://old.example")))
+  const r = root(folder(CHROME, "Chrome bookmarks", link("Old", "https://old.example")))
   const res = Bookmarks.apply(r, r, imported(link("New", "https://new.example")), "edge/default")
   assert.equal(res.replaced, false)
   assert.equal(r.children.length, 2)
-  assert.equal(res.folder.id, "bookmarks:edge/default")
+  assert.equal(res.folder.id, Bookmarks.importedFolderId("edge/default"))
 })
 
 test("apply: counts only bookmarks, not folders", () => {
@@ -230,15 +231,22 @@ test("apply: counts only bookmarks, not folders", () => {
 })
 
 test("apply: an id taken by a non-folder never gets duplicated", () => {
-  const r = root(Model.createNode("url", { id: "bookmarks:chrome/default", name: "Hand-edited", target: "https://x.example" }))
+  const r = root(Model.createNode("url", { id: CHROME, name: "Hand-edited", target: "https://x.example" }))
   const res = Bookmarks.apply(r, r, imported(link("A", "https://a.example")), "chrome/default")
   assert.equal(res.replaced, false)
-  assert.notEqual(res.folder.id, "bookmarks:chrome/default")
+  assert.notEqual(res.folder.id, CHROME)
   assert.equal(r.children.length, 2)
 })
 
 test("source keys and folder ids", () => {
-  assert.equal(Bookmarks.importedFolderId("chrome/default"), "bookmarks:chrome/default")
+  // Source keys hold "/", spaces and file names; the folder id must still be a plain file name.
+  for (const key of ["chrome/default", "chromium/profile 2", "html/my bookmarks.html", "html/../../x", "x".repeat(500)]) {
+    const id = Bookmarks.importedFolderId(key)
+    assert.ok(Model.isSafeId(id), id)
+    assert.equal(id, Bookmarks.importedFolderId(key))           // stable, so a re-import finds it
+  }
+  assert.match(Bookmarks.importedFolderId("chrome/default"), /^bookmarks-chrome-default-[0-9a-f]{16}$/)
+  assert.notEqual(Bookmarks.importedFolderId("html/a b.html"), Bookmarks.importedFolderId("html/a-b.html"))
   assert.equal(Bookmarks.htmlSourceKey("/home/u/Downloads/Bookmarks.html"), "html/bookmarks.html")
   assert.equal(Bookmarks.htmlSourceKey("/tmp/MY-EXPORT.HTM"), "html/my-export.htm")
 })

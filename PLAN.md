@@ -151,11 +151,10 @@ Verified live: browser discovery (found the installed Chrome profile), importing
 - [x] Scanned files and full history for personal data: clean, except that commits carry the author's email address (the author's call before pushing)
 
 ### Phase 6 — Publish
-- [ ] Push to a public GitHub repo and tag `v1.0.0` (the manifest `version` must match)
-- [ ] Search plugins.omarchy.org to make sure the id and name are unused
-- [ ] Submit through the form: https://github.com/omacom/omarchy-plugin-marketplace/issues/new?template=submit-plugin.yml
-  - Title `[Plugin]: YourOmaLauncher`, category **Productivity**, tags **launcher, quickshell, hyprland**
-- [ ] Respond to automated check and maintainer feedback. Future updates reach users through `omarchy plugin update` (a fast-forward pull), so keep `main` releasable.
+- [x] Push to a public GitHub repo and tag `v1.0.0` (the manifest `version` must match). Commit emails were switched to the GitHub noreply address before the first push. A fresh clone from GitHub validates, passes the tests and matches the working copy.
+- [x] Check the id and name are unused (the marketplace's `registry.json`, including retired ids)
+- [x] Submitted: [omacom/omarchy-plugin-marketplace#9157](https://github.com/omacom/omarchy-plugin-marketplace/issues/9157), category **Productivity**, tags **launcher, quickshell, hyprland**
+- [ ] Respond to automated check and maintainer feedback. Validation passed at `790e156`; the security baseline's only item was a false positive (the README's "never uses sudo" disclaimer read as a privilege request), reworded in `ea59665` and re-checked. A maintainer then found that an imported config's item ids reached the icon-copy path unchecked (an id like `../../x` could make `install` write outside `icons/`); fixed by canonicalizing ids on read (`Model.safeId`: plain characters only, otherwise a stable slug + 64-bit hash), refusing unsafe ids in `Editing.iconCopyPath` itself, and giving bookmark folders safe ids (old `bookmarks:<source>` ids map onto the new ones). Future updates reach users through `omarchy plugin update` (a fast-forward pull), so keep `main` releasable; a listed update is promoted through the marketplace's "Plugin verification" form with the new commit's SHA.
 
 **Rough total: 7–10 working days.**
 

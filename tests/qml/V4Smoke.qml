@@ -130,6 +130,8 @@ QtObject {
       check("editing form", Editing.isValid(Editing.emptyForm("url")), false)
       var damaged = ConfigSerializer.deserialize('{\n  "version": 2,\n  "root": { "id": "root" "type": "folder" }\n}')
       check("damaged config names the line in V4", [damaged.ok, /\(line 3, column 26\)$/.test(damaged.error)], [false, true])
+      check("safe ids hash the same in V4 as in Node", [Bookmarks.importedFolderId("chromium/profile 2"), Model.safeId("../../.bashrc")], ["bookmarks-chromium-profile-2-a0d86665f228ddbb", "id-bashrc-1096bdfa973fa828"])
+      check("iconCopyPath refuses a climbing id", Editing.iconCopyPath("/c", "../../x", "/p/a.png"), null)
       check("newId", /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(Model.newId()), true)
 
       // Timing in V4 itself.

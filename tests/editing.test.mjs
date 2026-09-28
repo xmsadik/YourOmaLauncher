@@ -171,3 +171,38 @@ test("a duplicate gets its own copies of copied icons, so deleting the original 
   assert.deepEqual(clone.children[1].icon, icon("/home/u/logo.png"))   // the user's own file is shared, not copied
   assert.deepEqual(folder.icon, icon("/c/icons/f.svg"))                 // the original is untouched
 })
+
+test("security: an imported id can never steer an icon copy outside the icons folder", () => {
+  const ConfigSerializer = load("ConfigSerializer")
+  // The reported attack: a config whose item id climbs out of <config>/icons.
+  const text = JSON.stringify({ version: 2, root: { id: "root", type: "folder", name: "Root", children: [
+    { id: "../../.bashrc", type: "url", name: "Evil", target: "https://x.example" },
+    { id: "a/b", type: "url", name: "Slash", target: "https://x.example" },
+    { id: "..", type: "url", name: "Dots", target: "https://x.example" },
+    { id: "x".repeat(300), type: "url", name: "Long", target: "https://x.example" },
+    { id: "bookmarks:chrome/default", type: "folder", name: "Old import", children: [] },
+    { id: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d", type: "url", name: "Guid", target: "https://x.example" },
+    { id: "git-status", type: "url", name: "Slug", target: "https://x.example" } ] } })
+  const kids = ConfigSerializer.deserialize(text).config.root.children
+  for (const node of kids) {
+    assert.ok(Model.isSafeId(node.id), node.id)
+    const path = Editing.iconCopyPath("/c", node.id, "/home/u/logo.png")
+    assert.equal(path, "/c/icons/" + node.id + ".png")
+    assert.ok(!path.slice("/c/icons/".length).includes("/"), path)
+  }
+  // Plain ids (Windows GUIDs, slugs) are kept, so usage.json and last-location still match them.
+  assert.equal(kids[5].id, "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
+  assert.equal(kids[6].id, "git-status")
+  // Replacements are stable across loads and distinct from each other.
+  assert.deepEqual(ConfigSerializer.deserialize(text).config.root.children.map(n => n.id), kids.map(n => n.id))
+  assert.equal(new Set(kids.map(n => n.id)).size, kids.length)
+  // An old bookmark folder id maps to the new one, so importing that source again still finds it.
+  assert.equal(kids[4].id, load("Bookmarks").importedFolderId("chrome/default"))
+})
+
+test("security: iconCopyPath and ownedIconFile refuse unsafe ids outright", () => {
+  for (const id of ["../x", "a/b", "..", ".", ".hidden", "", "x".repeat(129), null, undefined, 5])
+    assert.equal(Editing.iconCopyPath("/c", id, "/p/logo.png"), null, String(id))
+  assert.equal(Editing.ownedIconFile("/c", Model.createNode("url", { id: "../c/icons/x", icon: { kind: "file", value: "/c/icons/../c/icons/x.png" } })), null)
+  assert.equal(Model.isSafeId("a.b-c_D9"), true)
+})

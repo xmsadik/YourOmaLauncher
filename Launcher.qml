@@ -353,6 +353,11 @@ Item {
     var source = icon && icon.kind === "file" ? EnvExpander.expand(icon.value, root.env) : ""
     if (source && !Editing.isInIconsDir(store.configDir, source)) {
       var target = Editing.iconCopyPath(store.configDir, node.id, source)
+      if (!target) {
+        root.showPage("list")
+        root.message = "This item's id can't be used for an icon file; reload the config and try again."
+        return
+      }
       iconCopy.onDone = function(ok) {
         if (ok) root.finishIcon(node, { kind: "file", value: target })
         else root.message = "Couldn't copy " + source + " into " + store.configDir + "/icons."
