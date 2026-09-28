@@ -61,6 +61,16 @@ Scope {
     return true
   }
 
+  // Changes one setting and saves. Settings are a plain object inside `config`, so bindings on them
+  // only update if `config` itself signals a change.
+  function setSetting(key, value) {
+    var settings = Object.assign({}, store.config.settings)
+    settings[key] = value
+    store.config.settings = settings
+    store.configChanged()
+    return save()
+  }
+
   // Replaces a damaged config.json with the backup, if the backup itself is good.
   function restoreBackup() {
     backupFile.reload()

@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import qs.Commons
@@ -9,11 +10,15 @@ import "lib/LaunchPlan.js" as LaunchPlan
 import "lib/EnvExpander.js" as EnvExpander
 import "lib/TreeOps.js" as TreeOps
 import "lib/PathTrimmer.js" as PathTrimmer
+import "lib/Model.js" as Model
+import "lib/Editing.js" as Editing
+import "ui"
 
 // The launcher panel. Two modes:
 // - nav: the search text is empty; the list is the current folder (folders first).
 // - search: the list is ranked results from the whole tree, each with its folder path.
-// Keyboard behavior follows the Windows app's spec §6.1/§6.2; see the hint bar and README.
+// Keyboard behavior follows the Windows app's spec §6.1–§6.3; see the hint bar and README.
+// Editing happens on pages that replace the list inside the same card (`page`).
 Item {
   id: root
 
@@ -26,10 +31,19 @@ Item {
   property var rows: []
   property int selectedIndex: -1
   property string message: ""          // transient status line, e.g. a launch error
+  property bool messageIsInfo: false   // a confirmation ("Saved …") rather than a problem
   property var pendingLaunch: null     // node waiting for "Launch?" confirmation
   property var searchIndex: null       // rebuilt lazily after the tree changes
   property var usageScores: ({})
   property var pendingLocation: null   // folder ids to open once the config has loaded
+
+  property string page: "list"         // list | type | editor | apps | icon | settings
+  property string editId: ""           // the node the editor or icon page works on; "" = a new one
+  property var pendingDelete: null     // node waiting for "Delete?" confirmation
+  property string cutId: ""            // Ctrl+X'd node, moved by Ctrl+V
+  property bool menuOpen: false
+  property var menuNode: null          // what the context menu acts on (null: the folder itself)
+  property string browseFor: ""        // the field a running file chooser fills in
 
   readonly property var settings: store.config.settings
   readonly property bool searching: filterText.trim().length > 0
@@ -60,6 +74,14 @@ Item {
 
   function env(name) { return Quickshell.env(name) }
 
+  onMessageChanged: root.messageIsInfo = false
+
+  // A status-line confirmation, shown muted instead of as a warning.
+  function inform(text) {
+    root.message = text
+    root.messageIsInfo = text.length > 0
+  }
+
   // ---- lifecycle ----
 
   function open(payloadJson) {
@@ -67,6 +89,9 @@ Item {
     root.filterText = ""
     root.message = ""
     root.pendingLaunch = null
+    root.pendingDelete = null
+    root.page = "list"
+    root.menuOpen = false
     root.usageScores = store.usageScores()
     // The config usually arrives just after open(); until then only remember where to go.
     var ids = store.loaded && !root.settings.rememberLastLocation ? [] : store.lastLocation()
@@ -80,6 +105,7 @@ Item {
     if (root.settings.rememberLastLocation && !store.readOnly)
       store.setLastLocation(root.folderPath.slice(1).map(function(f) { return f.id }))
     root.pendingLaunch = null
+    root.pendingDelete = null
     root.opened = false
   }
 
@@ -196,7 +222,297 @@ Item {
     Quickshell.execDetached(LaunchPlan.execArgv(plan))
     store.recordUsage(node.id)
     if (root.settings.closeAfterLaunch) root.close()
-    else root.message = "Launched “" + node.name + "”."
+    else root.inform("Launched “" + node.name + "”.")
+  }
+
+  // ---- pages ----
+
+  // Focus moves at once, so a key typed right after (Enter, then Ctrl+D) reaches the new page.
+  function showPage(name) {
+    root.page = name
+    root.menuOpen = false
+    root.refocus()
+  }
+
+  function refocus() {
+    if (root.menuOpen) menu.forceActiveFocus()
+    else if (root.page === "type") typePicker.takeFocus()
+    else if (root.page === "editor") editor.takeFocus()
+    else if (root.page === "apps") appPicker.takeFocus()
+    else if (root.page === "icon") iconPage.takeFocus()
+    else if (root.page === "settings") settingsPage.takeFocus()
+    else keyCatcher.forceActiveFocus()
+  }
+
+  // ---- editing ----
+
+  function canEdit() {
+    if (!store.loaded) return false
+    if (store.readOnly) {
+      root.message = "Editing is off until config.json is fixed (Ctrl+R reload, Ctrl+Shift+R restore backup)."
+      return false
+    }
+    return true
+  }
+
+  // After an in-place change to the tree: save, and list it again with `keepNode` selected.
+  function commit(keepNode, text) {
+    store.save()
+    root.searchIndex = null
+    root.inform(text || "")
+    root.refresh(keepNode)
+  }
+
+  function nodeById(id) {
+    return id ? TreeOps.findById(store.config.root, id) : null
+  }
+
+  // A new item goes right after the selected one when that's in the current folder, else at the end.
+  function insertIndex(folder) {
+    var selected = root.selectedRow ? root.selectedRow.node : null
+    var at = selected ? folder.children.indexOf(selected) : -1
+    return at >= 0 ? at + 1 : null
+  }
+
+  function startNew(type) {
+    if (!root.canEdit()) return
+    if (!type) {
+      typePicker.open(root.folderPath.length > 1 ? root.currentFolder.name : "")
+      root.showPage("type")
+    } else if (type === "separator") {
+      var keep = root.selectedRow ? root.selectedRow.node : null
+      TreeOps.add(root.currentFolder, Model.createNode("separator"), root.insertIndex(root.currentFolder))
+      root.filterText = ""
+      root.showPage("list")
+      root.commit(keep, "Added a separator.")
+    } else {
+      root.editId = ""
+      editor.open(Editing.emptyForm(type), true, "")
+      root.showPage("editor")
+    }
+  }
+
+  function startEdit(node) {
+    if (!node || node.type === "separator" || !root.canEdit()) return
+    root.editId = node.id
+    var entry = node.type === "app" ? root.desktopEntryFor(node.desktopId) : null
+    editor.open(Editing.formFor(node), false, entry ? entry.name : "")
+    root.showPage("editor")
+  }
+
+  function saveEditor(form) {
+    if (!root.canEdit()) return
+    var node
+    if (root.editId) {
+      node = root.nodeById(root.editId)
+      if (!node) {
+        root.showPage("list")
+        root.message = "That item was removed while you were editing it."
+        return
+      }
+      Editing.applyForm(node, form)
+    } else {
+      node = Editing.createFromForm(form)
+      TreeOps.add(root.currentFolder, node, root.insertIndex(root.currentFolder))
+      root.filterText = ""   // show the new item where it was added
+    }
+    root.showPage("list")
+    root.commit(node, (root.editId ? "Saved “" : "Added “") + node.name + "”.")
+  }
+
+  function startIcon(node) {
+    if (!node || node.type === "separator" || !root.canEdit()) return
+    root.editId = node.id
+    iconPage.open(node)
+    root.showPage("icon")
+  }
+
+  // Image files are copied into <config>/icons first, so the icon survives the original moving.
+  function saveIcon(icon) {
+    var node = root.nodeById(root.editId)
+    if (!node || !root.canEdit()) return root.showPage("list")
+    var source = icon && icon.kind === "file" ? EnvExpander.expand(icon.value, root.env) : ""
+    if (source && !Editing.isInIconsDir(store.configDir, source)) {
+      var target = Editing.iconCopyPath(store.configDir, node.id, source)
+      iconCopy.onDone = function(ok) {
+        if (ok) root.finishIcon(node, { kind: "file", value: target })
+        else root.message = "Couldn't copy " + source + " into " + store.configDir + "/icons."
+      }
+      iconCopy.command = ["install", "-D", "-m", "0644", "-T", "--", source, target]
+      iconCopy.running = true
+      root.showPage("list")
+      return
+    }
+    root.showPage("list")
+    root.finishIcon(node, icon)
+  }
+
+  function finishIcon(node, icon) {
+    var old = Editing.ownedIconFile(store.configDir, node)
+    node.icon = icon
+    if (old && !(icon && icon.kind === "file" && icon.value === old))
+      Quickshell.execDetached(["rm", "-f", "--", old])
+    root.commit(node, icon ? "Changed the icon of “" + node.name + "”." : "“" + node.name + "” uses its automatic icon again.")
+  }
+
+  function askDelete(node) {
+    if (!node || !root.canEdit()) return
+    root.pendingDelete = node
+  }
+
+  function deleteNode(node) {
+    var at = root.selectedIndex
+    var files = Editing.ownedIconFiles(store.configDir, node)
+    if (!TreeOps.remove(store.config.root, node)) return
+    if (files.length > 0) Quickshell.execDetached(["rm", "-f", "--"].concat(files))
+    if (root.cutId && !root.nodeById(root.cutId)) root.cutId = ""
+    root.commit(null, node.type === "separator" ? "Deleted a separator." : "Deleted “" + node.name + "”.")
+    root.select(root.nearestSelectable(at))
+  }
+
+  function nearestSelectable(index) {
+    for (var i = Math.min(index, root.rows.length - 1); i >= 0; i--) if (Listing.isSelectable(root.rows, i)) return i
+    return Listing.firstSelectable(root.rows)
+  }
+
+  function move(node, direction) {
+    if (!node || !root.canEdit()) return
+    if (root.searching) {
+      root.message = "Clear the search to reorder items."
+      return
+    }
+    var moved = direction < 0 ? TreeOps.moveUp(store.config.root, node) : TreeOps.moveDown(store.config.root, node)
+    if (moved) root.commit(node)
+  }
+
+  function cut(node) {
+    if (!node || !root.canEdit()) return
+    root.cutId = node.id
+    root.inform("Cut “" + (node.name || "separator") + "”. Open another folder and press Ctrl+V to move it there.")
+  }
+
+  function paste() {
+    if (!root.canEdit()) return
+    var node = root.nodeById(root.cutId)
+    if (!node) {
+      root.cutId = ""
+      root.message = "Nothing to paste. Select an item and press Ctrl+X first."
+      return
+    }
+    if (root.searching) {
+      root.message = "Clear the search and open the folder to move “" + node.name + "” into."
+      return
+    }
+    var result = TreeOps.moveTo(store.config.root, node, root.currentFolder)
+    if (result === TreeOps.REJECTED) root.message = "A folder can't go inside itself."
+    else if (result === TreeOps.NO_OP) root.message = "“" + node.name + "” is already in this folder."
+    else {
+      root.cutId = ""
+      root.commit(node, "Moved “" + node.name + "” here.")
+    }
+  }
+
+  function duplicate(node) {
+    if (!node || !root.canEdit()) return
+    var clone = TreeOps.duplicate(store.config.root, node)
+    if (!clone) return
+    Editing.iconCopiesForDuplicate(store.configDir, node, clone).forEach(function(copy) {
+      Quickshell.execDetached(["cp", "-f", "--", copy.from, copy.to])
+    })
+    root.commit(clone, "Duplicated “" + node.name + "”.")
+  }
+
+  function changeSetting(key, value) {
+    if (!root.canEdit()) return
+    store.setSetting(key, value)
+  }
+
+  // Browse…: the portal file chooser is an ordinary window, so the panel steps aside while it's open.
+  function browse(field, directory) {
+    root.browseFor = field
+    var argv = ["omarchy-file-select", "--title", field === "icon" ? "Choose an image" : directory ? "Choose a folder" : "Choose a file"]
+    if (directory) argv.push("--directory")
+    if (field === "icon") argv.push("--extensions", "png svg jpg jpeg webp")
+    chooser.command = argv
+    chooser.running = true
+  }
+
+  function browsed(text) {
+    var path = String(text || "").split("\n")[0]
+    if (!path) return
+    if (root.browseFor === "icon") iconPage.setFile(path)
+    else editor.setField(root.browseFor, root.tildePath(path))
+  }
+
+  // /home/me/x → ~/x, which keeps the config usable under another user name.
+  function tildePath(path) {
+    var home = String(root.env("HOME") || "")
+    if (!home) return path
+    if (path === home) return "~"
+    return path.indexOf(home + "/") === 0 ? "~" + path.substring(home.length) : path
+  }
+
+  // ---- context menu ----
+
+  function menuItemsFor(node) {
+    var items = []
+    var editable = !store.readOnly
+    if (node && node.type !== "separator") {
+      items.push({ action: "open", label: node.type === "folder" ? "Open folder" : "Open", shortcut: "↵" })
+      if (root.searching) items.push({ action: "reveal", label: "Show in folder", shortcut: "Ctrl+↵" })
+      items.push({ action: "edit", label: "Edit…", shortcut: "F2", enabled: editable, separatorBefore: true })
+      items.push({ action: "icon", label: "Change icon…", shortcut: "Ctrl+I", enabled: editable })
+      items.push({ action: "duplicate", label: "Duplicate", shortcut: "Ctrl+D", enabled: editable })
+      items.push({ action: "cut", label: "Cut", shortcut: "Ctrl+X", enabled: editable })
+    }
+    if (node && !root.searching) {
+      items.push({ action: "up", label: "Move up", shortcut: "Ctrl+↑", enabled: editable, separatorBefore: node.type !== "separator" })
+      items.push({ action: "down", label: "Move down", shortcut: "Ctrl+↓", enabled: editable })
+    }
+    items.push({ action: "paste", label: "Paste here", shortcut: "Ctrl+V", separatorBefore: items.length > 0,
+                 enabled: editable && !root.searching && !!root.nodeById(root.cutId) })
+    items.push({ action: "new", label: "New item…", shortcut: "Ctrl+N", enabled: editable })
+    items.push({ action: "newFolder", label: "New folder…", shortcut: "Ctrl+Shift+N", enabled: editable })
+    if (node) items.push({ action: "delete", label: "Delete…", shortcut: "Del", enabled: editable, destructive: true, separatorBefore: true })
+    items.push({ action: "settings", label: "Settings", shortcut: "Ctrl+,", separatorBefore: true })
+    return items
+  }
+
+  // `at` is a point in the card; without one (Menu key) the menu opens under the selected row.
+  function openMenu(node, at) {
+    menu.items = root.menuItemsFor(node)
+    root.menuNode = node
+    if (!at) {
+      var item = root.selectedIndex >= 0 ? list.itemAtIndex(root.selectedIndex) : null
+      at = item ? item.mapToItem(card, Style.space(48), item.height) : Qt.point(card.width / 3, card.height / 3)
+    }
+    menu.x = Math.max(Style.space(4), Math.min(at.x, card.width - menu.width - Style.space(4)))
+    menu.y = Math.max(Style.space(4), Math.min(at.y, card.height - menu.height - Style.space(4)))
+    root.menuOpen = true
+    Qt.callLater(root.refocus)
+  }
+
+  function closeMenu() {
+    root.menuOpen = false
+    Qt.callLater(root.refocus)
+  }
+
+  function menuChosen(action) {
+    var node = root.menuNode
+    root.closeMenu()
+    if (action === "open") root.activate(root.selectedRow && root.selectedRow.node === node ? root.selectedRow : Listing.rowFor(node, null, null))
+    else if (action === "reveal") root.revealSelected()
+    else if (action === "edit") root.startEdit(node)
+    else if (action === "icon") root.startIcon(node)
+    else if (action === "duplicate") root.duplicate(node)
+    else if (action === "cut") root.cut(node)
+    else if (action === "up") root.move(node, -1)
+    else if (action === "down") root.move(node, 1)
+    else if (action === "paste") root.paste()
+    else if (action === "new") root.startNew(null)
+    else if (action === "newFolder") root.startNew("folder")
+    else if (action === "delete") root.askDelete(node)
+    else if (action === "settings") root.showPage("settings")
   }
 
   // ---- keyboard ----
@@ -206,8 +522,35 @@ Item {
     var shift = (event.modifiers & Qt.ShiftModifier) !== 0
     var key = event.key
 
-    if (root.pendingLaunch) {
+    if (root.pendingLaunch || root.pendingDelete) {
       if (!confirm.handleKey(event)) return false
+      return true
+    }
+
+    var selected = root.selectedRow ? root.selectedRow.node : null
+    if (key === Qt.Key_Menu || (shift && key === Qt.Key_F10)) {
+      root.openMenu(selected, null)
+      return true
+    }
+    if (ctrl) {
+      if (key === Qt.Key_N) root.startNew(shift ? "folder" : null)
+      else if (key === Qt.Key_Up) root.move(selected, -1)
+      else if (key === Qt.Key_Down) root.move(selected, 1)
+      else if (key === Qt.Key_X) root.cut(selected)
+      else if (key === Qt.Key_V) root.paste()
+      else if (key === Qt.Key_D) root.duplicate(selected)
+      else if (key === Qt.Key_I) root.startIcon(selected)
+      else if (key === Qt.Key_Comma) root.showPage("settings")
+      else key = 0
+      if (key !== 0) return true
+      key = event.key
+    }
+    if (key === Qt.Key_F2) {
+      root.startEdit(selected)
+      return true
+    }
+    if (key === Qt.Key_Delete) {
+      root.askDelete(selected)
       return true
     }
 
@@ -259,18 +602,34 @@ Item {
         " a look after the move from Windows (marked " + Listing.GLYPHS.warning + ")."
     return ""
   }
-  readonly property bool statusIsWarning: store.error.length > 0 || (root.message.length > 0 && root.message.indexOf("Launched") !== 0)
+  readonly property bool statusIsWarning: store.error.length > 0 || (root.message.length > 0 && !root.messageIsInfo)
     || (!root.message && root.selectedRow !== null && !!root.selectedRow.reviewNote)
 
   readonly property string hintText: {
     if (store.readOnly) return "Ctrl+R reload   Ctrl+Shift+R restore backup   Esc close"
-    if (root.searching) return "↵ open   Ctrl+↵ show in folder   ↑↓ select   Esc clear"
-    return "↵ open   → enter   ← back   type to search   Esc close"
+    if (root.searching) return "↵ open   Ctrl+↵ show in folder   F2 edit   Menu more   Esc clear"
+    return "↵ open   → enter   ← back   Ctrl+N add   F2 edit   Menu more   Esc close"
   }
 
   ConfigStore {
     id: store
     onConfigReplaced: root.onConfigReplaced()
+  }
+
+  // The file chooser for Browse…; prints the chosen path, or nothing when canceled.
+  Process {
+    id: chooser
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.browsed(text)
+    }
+    onRunningChanged: if (!running) Qt.callLater(root.refocus)
+  }
+
+  Process {
+    id: iconCopy
+    property var onDone: null
+    onExited: function(code) { if (onDone) onDone(code === 0) }
   }
 
   FontMetrics {
@@ -283,7 +642,7 @@ Item {
 
   PanelWindow {
     id: panel
-    visible: root.opened
+    visible: root.opened && !chooser.running
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "youromalauncher"
@@ -296,9 +655,13 @@ Item {
       color: root.scrim
     }
 
+    // A click outside closes the launcher, but never throws away a half-filled form.
     MouseArea {
       anchors.fill: parent
-      onClicked: root.close()
+      onClicked: {
+        if (root.menuOpen) root.closeMenu()
+        else if (root.page === "list") root.close()
+      }
     }
 
     BorderSurface {
@@ -306,7 +669,7 @@ Item {
       width: root.cardWidth
       // Tall enough for the confirmation dialog even when the list is short.
       height: Math.max(card.contentTopInset + card.contentBottomInset + content.implicitHeight,
-                       root.pendingLaunch ? Style.space(200) : 0)
+                       root.pendingLaunch || root.pendingDelete ? Style.space(200) : 0)
       radius: root.cornerRadius
       anchors.horizontalCenter: parent.horizontalCenter
       // The top edge stays put while the list grows and shrinks with typing: it sits where a full
@@ -325,7 +688,7 @@ Item {
       Item {
         id: keyCatcher
         anchors.fill: parent
-        z: root.pendingLaunch ? 20 : 0
+        z: root.pendingLaunch || root.pendingDelete ? 20 : 0
         focus: true
 
         Keys.priority: Keys.BeforeItem
@@ -336,11 +699,13 @@ Item {
         ConfirmDialog {
           id: confirm
           anchors.fill: parent
-          opened: root.pendingLaunch !== null
+          opened: root.pendingLaunch !== null || root.pendingDelete !== null
           z: 10
-          message: root.pendingLaunch ? "Launch “" + root.pendingLaunch.name + "”?" : ""
-          confirmText: "Launch"
+          message: root.pendingLaunch ? "Launch “" + root.pendingLaunch.name + "”?"
+            : root.pendingDelete ? Editing.deletePrompt(root.pendingDelete) : ""
+          confirmText: root.pendingDelete ? "Delete" : "Launch"
           selectedIndex: 1
+          // Enter launches, but never deletes: for a delete, Cancel is the default.
           background: root.background
           foreground: root.foreground
           scrim: root.scrim
@@ -348,12 +713,18 @@ Item {
           selectedText: root.selectedText
           fontFamily: root.fontFamily
           cornerRadius: root.cornerRadius
-          onOpenedChanged: if (opened) selectedIndex = 1
-          onCanceled: root.pendingLaunch = null
+          onOpenedChanged: if (opened) selectedIndex = root.pendingDelete ? 0 : 1
+          onCanceled: {
+            root.pendingLaunch = null
+            root.pendingDelete = null
+          }
           onConfirmed: {
             var node = root.pendingLaunch
+            var doomed = root.pendingDelete
             root.pendingLaunch = null
+            root.pendingDelete = null
             if (node) root.launch(node)
+            if (doomed) root.deleteNode(doomed)
           }
         }
       }
@@ -369,6 +740,7 @@ Item {
         Item {
           width: parent.width
           height: root.headerHeight
+          visible: root.page === "list"
 
           Text {
             id: breadcrumbText
@@ -402,7 +774,15 @@ Item {
         Item {
           id: listArea
           width: parent.width
+          visible: root.page === "list"
           height: root.rows.length === 0 ? root.rowHeight * 3 : Math.min(list.contentHeight, root.visibleRowCount * root.rowHeight)
+
+          // Right-click on empty space: the folder's own menu (new item, paste, settings).
+          MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            onClicked: function(mouse) { root.openMenu(null, mapToItem(card, mouse.x, mouse.y)) }
+          }
 
           ListView {
             id: list
@@ -419,6 +799,7 @@ Item {
               readonly property bool selected: index === root.selectedIndex
               width: list.width
               height: modelData.separator ? root.separatorHeight : root.rowHeight
+              opacity: root.cutId && modelData.node.id === root.cutId ? 0.45 : 1
 
               Rectangle {
                 visible: rowItem.modelData.separator
@@ -498,11 +879,17 @@ Item {
                 elide: Text.ElideRight
               }
 
+              // Separators can't be selected, so right-clicking one is how to move or delete it.
               MouseArea {
                 anchors.fill: parent
-                enabled: !rowItem.modelData.separator
-                onClicked: root.select(rowItem.index)
-                onDoubleClicked: {
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onClicked: function(mouse) {
+                  if (!rowItem.modelData.separator) root.select(rowItem.index)
+                  if (mouse.button === Qt.RightButton)
+                    root.openMenu(rowItem.modelData.node, mapToItem(card, mouse.x, mouse.y))
+                }
+                onDoubleClicked: function(mouse) {
+                  if (rowItem.modelData.separator || mouse.button !== Qt.LeftButton) return
                   root.select(rowItem.index)
                   root.activate(rowItem.modelData)
                 }
@@ -521,7 +908,7 @@ Item {
               horizontalAlignment: Text.AlignHCenter
               textFormat: Text.PlainText
               text: root.searching ? "No matches for “" + root.filterText.trim() + "”"
-                : root.folderPath.length === 1 ? "Your launcher is empty" : "This folder is empty"
+                : root.folderPath.length === 1 ? "Your launcher is empty" : "This folder is empty. Ctrl+N adds an item."
               color: root.foreground
               opacity: 0.75
               font.family: root.fontFamily
@@ -534,7 +921,7 @@ Item {
               horizontalAlignment: Text.AlignHCenter
               wrapMode: Text.Wrap
               textFormat: Text.PlainText
-              text: "Add items to " + store.configPath + " (see config.example.json in the plugin folder)."
+              text: "Press Ctrl+N to add your first item, or edit " + store.configPath + "."
               color: root.muted
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -542,9 +929,65 @@ Item {
           }
         }
 
+        TypePicker {
+          id: typePicker
+          width: parent.width
+          visible: root.page === "type"
+          onPicked: function(type) { root.startNew(type) }
+          onCanceled: root.showPage("list")
+        }
+
+        EditorPage {
+          id: editor
+          width: parent.width
+          visible: root.page === "editor"
+          onSaveRequested: function(form) { root.saveEditor(form) }
+          onCanceled: root.showPage("list")
+          onBrowseRequested: function(field, directory) { root.browse(field, directory) }
+          onChooseAppRequested: {
+            appPicker.open(editor.form.desktopId)
+            root.showPage("apps")
+          }
+        }
+
+        AppPicker {
+          id: appPicker
+          width: parent.width
+          visible: root.page === "apps"
+          onPicked: function(desktopId, name) {
+            editor.setApp(desktopId, name)
+            root.showPage("editor")
+          }
+          onCanceled: root.showPage("editor")
+        }
+
+        IconPage {
+          id: iconPage
+          width: parent.width
+          visible: root.page === "icon"
+          env: root.env
+          onSaveRequested: function(icon) { root.saveIcon(icon) }
+          onCanceled: root.showPage("list")
+          onBrowseRequested: root.browse("icon", false)
+        }
+
+        SettingsPage {
+          id: settingsPage
+          width: parent.width
+          visible: root.page === "settings"
+          settings: root.settings
+          configPath: store.configPath
+          onChanged: function(key, value) { root.changeSetting(key, value) }
+          onClosed: root.showPage("list")
+          onOpenConfigRequested: {
+            Quickshell.execDetached(["uwsm-app", "--", "omarchy-launch-editor", store.configPath])
+            root.close()
+          }
+        }
+
         Text {
           width: parent.width
-          visible: root.statusText.length > 0
+          visible: root.statusText.length > 0 && (root.page === "list" || store.readOnly)
           textFormat: Text.PlainText
           text: root.statusText
           wrapMode: Text.Wrap
@@ -557,7 +1000,7 @@ Item {
 
         Text {
           width: parent.width
-          visible: root.settings.showHintBar
+          visible: root.settings.showHintBar && root.page === "list"
           textFormat: Text.PlainText
           text: root.hintText
           color: root.muted
@@ -566,6 +1009,22 @@ Item {
           font.pixelSize: Style.font.caption
           elide: Text.ElideRight
         }
+      }
+
+      MouseArea {
+        anchors.fill: parent
+        z: 29
+        visible: root.menuOpen
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: root.closeMenu()
+      }
+
+      ContextMenu {
+        id: menu
+        z: 30
+        visible: root.menuOpen
+        onChosen: function(action) { root.menuChosen(action) }
+        onClosed: root.closeMenu()
       }
     }
   }

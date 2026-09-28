@@ -1,8 +1,8 @@
 import Quickshell
 import QtQuick
 import qs.Commons
-import "lib/Listing.js" as Listing
-import "lib/EnvExpander.js" as EnvExpander
+import "../lib/Listing.js" as Listing
+import "../lib/EnvExpander.js" as EnvExpander
 
 // A node's icon: its own icon if it has one (a theme icon name, an image file, a Nerd Font glyph or an
 // emoji); otherwise, for apps, the installed app's icon; otherwise a glyph for the node type. Any image
@@ -60,6 +60,7 @@ Item {
     fillMode: Image.PreserveAspectFit
     asynchronous: true
     smooth: true
+    cache: false   // copied icons keep their path when replaced
     visible: status === Image.Ready
   }
 

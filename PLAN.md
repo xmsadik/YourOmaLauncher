@@ -101,7 +101,7 @@ Port these as `.pragma library` modules and port the matching xUnit tests to `no
 - [x] Keyboard behavior from spec §6.1/§6.2 (see README)
 - [x] Launching through `bash -l` like Omarchy's `Util.execArgv`, `closeAfterLaunch`, "ask before launching" confirmation, errors in the status line; a missing program or path gives a desktop notification (a detached launch can't report back)
 - [x] Mouse: click selects, double-click opens. *(Not verified live: there's no pointer automation on this machine. Keyboard paths were all tested with `wtype`.)*
-- [ ] → Phase 3: right-click context menu (its items are editing actions)
+- [x] → Phase 3: right-click context menu (its items are editing actions)
 
 Verified live in omarchy-shell 4.0.4: first run, live reload of an edited config, search with Turkish folding, launch + usage recording, confirmation, Ctrl+Enter reveal, going up keeps the folder selected, wrap-around, review notes, missing-program notification, damaged config and recovery, remember-last-location across a fresh instance.
 
@@ -111,12 +111,19 @@ Verified live in omarchy-shell 4.0.4: first run, live reload of an edited config
 - V4's `JSON.parse` error has no line or column, so a damaged config only says "Parse error". Improve in Phase 5: point at the line.
 
 ### Phase 3 — Editing UI (2–3 days)
-- [ ] Type picker (F/A/P/C/U/S) and editor form with per-type fields and an "Advanced" section
-- [ ] Browse… through `omarchy file select` (`--directory` for folders)
-- [ ] Pick an app from installed `.desktop` entries (optional: a small JS scan of `$XDG_DATA_DIRS/applications`)
-- [ ] Icon picker (theme icon name / file / glyph / emoji). Custom icons are copied to `~/.config/youromalauncher/icons/`
-- [ ] Shortcuts: Ctrl+N, Ctrl+Shift+N, F2, Delete (with confirmation), Ctrl+↑/↓, Ctrl+X/V, Ctrl+D, Ctrl+I, Ctrl+,
-- [ ] Settings page: `closeAfterLaunch`, `maxVisibleItems`, `defaultShell`, `rememberLastLocation`, `showHintBar`
+- [x] Type picker (F/A/P/C/U/S) and editor form with per-type fields and an "Advanced" section (`ui/TypePicker.qml`, `ui/EditorPage.qml`; form logic and validation in `lib/Editing.js`)
+- [x] Browse… through `omarchy-file-select` (`--directory` for folders). The panel hides while the portal dialog is open, then returns with focus restored; paths under `$HOME` are stored as `~/…`
+- [x] Pick an app from installed `.desktop` entries (`ui/AppPicker.qml`, from Quickshell's `DesktopEntries`; no scan of our own needed)
+- [x] Icon picker (theme icon name / file / glyph / emoji) (`ui/IconPage.qml`). Custom icons are copied to `~/.config/youromalauncher/icons/<id>.<ext>`, get their own copy on duplicate, and are deleted with their item (only files matching that exact id pattern, so a hand-edited path can never delete anything else)
+- [x] Shortcuts: Ctrl+N, Ctrl+Shift+N, F2, Delete (with confirmation, Cancel is the default), Ctrl+↑/↓, Ctrl+X/V, Ctrl+D, Ctrl+I, Ctrl+,; plus Menu / Shift+F10 / right-click for the context menu (`ui/ContextMenu.qml`)
+- [x] Settings page: `closeAfterLaunch`, `maxVisibleItems`, `defaultShell`, `rememberLastLocation`, `showHintBar`, and "Open config file" (`ui/SettingsPage.qml`)
+
+Verified live with `wtype` in omarchy-shell 4.0.4: every shortcut above, type picker by letter, name suggestion from a URL, a picked app and a browsed file, multi-line command, duplicate/reorder/cut/paste, separator, delete confirmation, emoji and image icons (copied, then removed with the item), a setting toggled and saved, the context menu from the Menu key, and the file chooser round trip. Right-click and double-click are wired but can't be tested here (no pointer automation).
+
+**Findings:**
+- `qs.Ui` `Button` isn't a Tab stop unless `focusable: true`, and `ButtonGroup` moves a cursor with ←→ and picks with Space/Enter. We follow the kit's convention and say so in the hints.
+- `TextNormalizer`'s Turkish alphabet was missing q, w and x, so they sorted before every other letter (seen in the app picker, and it affected search tie-breaks). Fixed to ICU's Turkish order, with a test.
+- Separators can't be selected (arrows skip them), so right-click is the only way to move or delete one from the panel. Revisit if that turns out to matter.
 
 ### Phase 4 — Import and migration (1 day)
 - [x] Windows config migration logic (done in Phase 1, `ConfigSerializer.js`)

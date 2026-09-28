@@ -41,6 +41,12 @@ test("compareTurkish follows the Turkish alphabet, case-insensitively", () => {
   assert.deepEqual(sorted, ["Can", "Çanta", "Dosya", "ılık", "Işık", "ilik", "İlk"])
 })
 
+test("compareTurkish puts q, w and x in their Latin places, among the letters", () => {
+  const sorted = ["Xournal", "Qt Tool", "Aether", "WhatsApp", "Zoom", "Vim", "Pinta", "Rsync"].sort(TextNormalizer.compareTurkish)
+  assert.deepEqual(sorted, ["Aether", "Pinta", "Qt Tool", "Rsync", "Vim", "WhatsApp", "Xournal", "Zoom"])
+  assert.ok(TextNormalizer.sortKey("Qt") > TextNormalizer.sortKey("Pinta") && TextNormalizer.sortKey("Qt") < TextNormalizer.sortKey("Rsync"))
+})
+
 test("compareTurkish sorts spaces and digits before letters", () => {
   assert.ok(TextNormalizer.compareTurkish("Can X", "Cana") < 0)
   assert.ok(TextNormalizer.compareTurkish("Build 2", "Build a") < 0)

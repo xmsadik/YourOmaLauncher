@@ -4,9 +4,8 @@ A launcher you build yourself, for [Omarchy](https://omarchy.org). Put apps, fil
 commands and links into nested folders, then open any of them from the keyboard with fuzzy search
 across the whole tree. Nothing is indexed automatically; everything in it is something you put there.
 
-> **Status: in development (0.1.0).** Browsing, search and launching work. Adding and editing items
-> from the panel comes next; until then, edit the config file (see [Config](#config)). See
-> [PLAN.md](PLAN.md).
+> **Status: in development (0.1.0).** Browsing, search, launching and editing from the panel work.
+> Importing bookmarks and the Windows config from the panel comes next. See [PLAN.md](PLAN.md).
 
 ## Requirements
 
@@ -42,6 +41,30 @@ With the search empty you browse folders; typing searches the whole tree.
 | `Esc` | Close | Clear the search |
 | `Ctrl+R` | Reload the config file now | Same |
 | `Ctrl+Shift+R` | Restore the backup, when the config file is damaged | Same |
+
+### Editing
+
+These work on the selected item, while browsing and in search results.
+
+| Key | Does |
+|---|---|
+| `Ctrl+N` | Add an item to the current folder: pick a type (`F`older, `A`pp, `P`ath, `C`ommand, `U`RL, `S`eparator) |
+| `Ctrl+Shift+N` | Add a folder |
+| `F2` | Edit |
+| `Delete` | Delete (asks first; a folder goes with everything in it) |
+| `Ctrl+↑` `Ctrl+↓` | Move up / down within its folder (while browsing) |
+| `Ctrl+X`, then `Ctrl+V` | Move to another folder: cut, open the folder, paste |
+| `Ctrl+D` | Duplicate |
+| `Ctrl+I` | Change the icon |
+| `Ctrl+,` | Settings |
+| `Menu` or `Shift+F10` | All of the above in a menu (also on right-click) |
+
+In the editor, `Tab` moves between fields, `Enter` saves (`Ctrl+Enter` in the command box, where
+`Enter` starts a new line), `Alt+A` shows the advanced fields and `Esc` cancels. In a row of choices,
+`←` `→` move and `Space` picks. **Browse…** opens the desktop file chooser; the panel steps aside
+until you've picked something. A name is suggested from what you pick, unless you've typed your own.
+
+Separators can't be selected, so to move or delete one, right-click it.
 
 Click selects a row; double-click opens it.
 
@@ -80,12 +103,14 @@ searched), `confirmLaunch` (ask first), and `icon`:
 "icon": { "kind": "emoji", "value": "🚀" }
 ```
 
-Without an icon, apps show their installed icon and everything else a glyph for its type. `~`,
+Without an icon, apps show their installed icon and everything else a glyph for its type. An image
+chosen from the panel is copied to `~/.config/youromalauncher/icons/`, so it keeps working if the
+original moves. `~`,
 `$VAR` and `${VAR}` work in targets, arguments and working directories. Programs are started through
 your login shell's environment, so everything on your `PATH` works; if a program or path doesn't
 exist, you get a notification.
 
-Settings (`"settings"` at the top of the file): `closeAfterLaunch` (default `true`),
+Settings (`Ctrl+,` in the panel, or `"settings"` at the top of the file): `closeAfterLaunch` (default `true`),
 `maxVisibleItems` (8), `defaultShell` (`null` = your login shell), `rememberLastLocation` (`false`),
 `showHintBar` (`true`).
 
