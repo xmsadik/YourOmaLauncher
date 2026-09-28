@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
@@ -45,6 +46,7 @@ Item {
   property string cutId: ""            // Ctrl+X'd node, moved by Ctrl+V
   property bool menuOpen: false
   property var menuNode: null          // what the context menu acts on (null: the folder itself)
+  property var targetScreen: null      // the monitor the panel opens on, chosen at open()
   property string browseFor: ""        // the field a running file chooser fills in
   property var pendingImport: null     // a config file read for import, waiting for merge or replace
   property var readQueue: []           // readFiles() jobs, one file at a time
@@ -89,6 +91,7 @@ Item {
   // ---- lifecycle ----
 
   function open(payloadJson) {
+    root.targetScreen = root.focusedScreen()
     root.opened = true
     root.filterText = ""
     root.message = ""
@@ -103,6 +106,16 @@ Item {
     else root.pendingLocation = ids
     root.refresh(null)
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  // The screen of the monitor Hyprland has focused, where a keyboard-summoned panel belongs (the same
+  // rule as the bar's panels). null until Hyprland reports one: the compositor then picks.
+  function focusedScreen() {
+    var monitor = Hyprland.focusedMonitor
+    var name = monitor ? String(monitor.name || "") : ""
+    var screens = Quickshell.screens
+    for (var i = 0; i < screens.length; i++) if (screens[i].name === name) return screens[i]
+    return null
   }
 
   function close() {
@@ -834,6 +847,7 @@ Item {
   PanelWindow {
     id: panel
     visible: root.opened && !chooser.running
+    screen: root.targetScreen
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "youromalauncher"
@@ -1099,6 +1113,7 @@ Item {
               horizontalAlignment: Text.AlignHCenter
               textFormat: Text.PlainText
               text: root.searching ? "No matches for “" + root.filterText.trim() + "”"
+                : store.readOnly ? "Your config file needs fixing"
                 : root.folderPath.length === 1 ? "Your launcher is empty" : "This folder is empty. Ctrl+N adds an item."
               color: root.foreground
               opacity: 0.75
@@ -1112,7 +1127,9 @@ Item {
               horizontalAlignment: Text.AlignHCenter
               wrapMode: Text.Wrap
               textFormat: Text.PlainText
-              text: "Press Ctrl+N to add your first item, or edit " + store.configPath + "."
+              text: store.readOnly
+                ? "Fix " + store.configPath + " and it reloads by itself, or restore the backup."
+                : "Press Ctrl+N to add your first item, or edit " + store.configPath + "."
               color: root.muted
               font.family: root.fontFamily
               font.pixelSize: Style.font.body

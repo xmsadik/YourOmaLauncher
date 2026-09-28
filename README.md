@@ -4,13 +4,21 @@ A launcher you build yourself, for [Omarchy](https://omarchy.org). Put apps, fil
 commands and links into nested folders, then open any of them from the keyboard with fuzzy search
 across the whole tree. Nothing is indexed automatically; everything in it is something you put there.
 
-> **Status: in development (0.1.0).** Browsing, search, launching, editing, and importing bookmarks
-> and configs from the panel work. Publishing prep comes next. See [PLAN.md](PLAN.md).
+![The launcher: a folder of apps, files, links and commands, and a search across the whole tree](preview.png)
+
+> **Status: 0.1.0, feature-complete and in final testing before its first release.** See
+> [PLAN.md](PLAN.md).
 
 ## Requirements
 
-Omarchy 4 (Quattro) with `omarchy-shell`. No other dependencies. The plugin is plain QML/JavaScript:
-it ships no binaries and has no installer script, and it never uses `sudo`.
+Omarchy 4 (Quattro) with `omarchy-shell`; tested on 4.0.4. No other dependencies. The plugin is plain
+QML/JavaScript: it ships no binaries, has no installer script, installs no packages or services, and
+never uses `sudo`. It starts your items the way Omarchy's own launcher does (through `bash -l`
+and `uwsm-app`, with `gtk-launch`, `xdg-open`, `xdg-terminal-exec` or `omarchy launch browser`, and
+`omarchy notification send` if something is missing), uses `omarchy-file-select`
+and `omarchy-launch-editor` for Browse… and "Open config file", and otherwise only runs standard
+tools: `find` and `cat` to read browser bookmarks, and `mkdir`, `cp`, `install` and `rm` inside
+`~/.config/youromalauncher`.
 
 ## Install
 
@@ -26,7 +34,8 @@ o.bind("SUPER + D", "YourOmaLauncher", "omarchy-shell shell toggle io.github.xms
 
 ## Keyboard
 
-With the search empty you browse folders; typing searches the whole tree.
+The panel opens on the monitor you're working on and follows your Omarchy theme. With the search
+empty you browse folders; typing searches the whole tree.
 
 | Key | Browsing | Searching |
 |---|---|---|
@@ -140,8 +149,8 @@ Import your Windows `config.json` with **Import a config file…**, or copy it o
 or cmd commands, run as administrator) are marked with 󰀦, and the status line tells you what to
 change when you select one. Your `usage.json` works unchanged.
 
-If the file is damaged, the panel keeps showing the last good version, says what's wrong, and doesn't
-write to the file until you fix it or restore the backup.
+If the file is damaged, the panel keeps showing the last good version, says what's wrong and on which
+line, and doesn't write to the file until you fix it or restore the backup.
 
 ## Remove
 
@@ -164,9 +173,9 @@ update until it restarts.
 
 ## Development
 
-The plugin is QML (`Launcher.qml` for the panel, `ConfigStore.qml` for the files, `NodeIcon.qml`)
-plus JavaScript libraries in `lib/`: the logic ported from the Windows app (config format, tree
-edits, search, launch plans). The libraries have no QML dependencies, so they are tested outside
+The plugin is QML (`Launcher.qml` for the panel, `ConfigStore.qml` for the files, and the pages in
+`ui/`: editor, pickers, settings, import) plus JavaScript libraries in `lib/`: the logic ported from
+the Windows app (config format, tree edits, search, launch plans, bookmark import). The libraries have no QML dependencies, so they are tested outside
 the shell:
 
 ```bash
@@ -188,6 +197,7 @@ omarchy plugin enable io.github.xmsadik.youromalauncher
 After changing QML or `lib/`, run `npm run reload` (validates, then restarts the shell; a rescan
 alone doesn't load changed code). The shell's log: `quickshell log -p /usr/share/omarchy/shell`.
 Set `YOUROMALAUNCHER_CONFIG_DIR` in the shell's environment to use a different config folder.
+Testing in the running shell edits your real launcher; see [tasks/lessons.md](tasks/lessons.md).
 
 ## License
 

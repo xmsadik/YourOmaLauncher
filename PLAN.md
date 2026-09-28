@@ -139,12 +139,16 @@ Verified live: browser discovery (found the installed Chrome profile), importing
 - The context menu gained Home/End.
 
 ### Phase 5 — Polish and publish prep (1 day)
-- [ ] README: *(usage, keys, config format, install/update/remove written in Phase 2)* screenshots, **install** (`omarchy plugin add <url> --enable`), **Hyprland bind snippet**, config format, keyboard reference, **removal** (`omarchy plugin remove <id>` plus deleting `~/.config/youromalauncher`)
-- [ ] LICENSE (MIT suggested). Say "no external dependencies, no binaries, no sudo" in the README.
-- [ ] `preview.png` (a screenshot of the panel on a stock Omarchy theme)
+- [x] README: screenshot, install, Hyprland bind snippet, config format, keyboard reference, import/export, update, removal
+- [x] LICENSE (MIT). The README says there are no dependencies, binaries, installer scripts or sudo, and lists every command the plugin runs (audited against the code).
+- [x] `preview.png`: the demo config (`config.example.json`) on stock Tokyo Night, browsing and a search, cropped to the panel on a plain background (the Quattro wallpaper carries third-party logos)
 - [x] `config.example.json` for Linux (Phase 1; a test keeps it loadable)
-- [ ] `omarchy plugin validate .`. Test a clean install from the public URL on a fresh user or VM. Test theme switching and multiple monitors.
-- [ ] Carry over `tasks/lessons.md` rules (e.g. keep real user data out of the repo)
+- [x] `omarchy plugin validate .` passes.
+- [ ] Test a clean install from the public URL on a fresh user or VM (needs Phase 6's push).
+- [ ] Theme switching and multiple monitors, by hand. The panel is re-created on every open and binds to the theme's colors, so a theme change applies on the next open; it now opens on Hyprland's focused monitor (the bar's rule; Omarchy's own clipboard overlay doesn't choose). Only one monitor here, so neither is tested live.
+- [x] `tasks/lessons.md`: the Windows project's rules (no real data in the repo, scan history before going public, distrust empty results) plus this project's (live tests edit the real config; V4 isn't Node)
+- [x] Phase 2's promise: a damaged config names the line and column (`Jsonc.checkSyntax`; comments and trailing commas are blanked in place so positions match the file), with hints for a missing comma or a Windows path's backslashes
+- [x] Scanned files and full history for personal data: clean, except that commits carry the author's email address (the author's call before pushing)
 
 ### Phase 6 — Publish
 - [ ] Push to a public GitHub repo and tag `v1.0.0` (the manifest `version` must match)

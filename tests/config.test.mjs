@@ -295,3 +295,34 @@ test("collectNotes finds review notes anywhere in the tree, including ones saved
   assert.deepEqual(reread.notes, [])                                  // not a migration…
   assert.equal(ConfigSerializer.collectNotes(reread.config.root).length, 2)   // …but the notes are still there
 })
+
+test("a damaged config says where: line and column, with comments not shifting them", () => {
+  const Jsonc = load("Jsonc")
+  const ConfigSerializer = load("ConfigSerializer")
+  const where = text => {
+    const p = Jsonc.checkSyntax(Jsonc.strip(text))
+    return p && [p.line, p.column, p.message]
+  }
+  assert.deepEqual(where('{\n  "a": 1\n  "b": 2\n}'), [3, 3, "Expected “,” or “}” but found a quote mark (a missing comma?)"])
+  assert.deepEqual(where('{\n  // note, with "quotes"\n  /* block\n  comment */ "a": [1, 2,],\n  "b": tru\n}').slice(0, 2), [5, 8])
+  assert.deepEqual(where('{ "path": "C:\\Users\\me" }'), [1, 14, "Invalid escape “\\U” (a Windows path? write \\\\ for each backslash)"])
+  assert.deepEqual(where('{ "a": "open\n}').slice(0, 2), [1, 8])
+  assert.deepEqual(where('{ "a": 1 } x').slice(0, 2), [1, 12])
+  assert.deepEqual(where('{ "a": [1, 2 }').slice(0, 2), [1, 14])
+  assert.deepEqual(where('{ a: 1 }').slice(0, 2), [1, 3])
+  assert.deepEqual(where('{ "a": 01 }').slice(0, 2), [1, 9])
+  assert.deepEqual(where('{ "a": '), [1, 8, "The file ends where a value should be"])
+  assert.equal(where('{ "a": [1, 2,], /* x */ "b": { "c": "d\\n" }, }'), null)   // valid once stripped
+  const r = ConfigSerializer.deserialize('{\n  "version": 2,\n  "root": { "id": "root" "type": "folder" }\n}')
+  assert.equal(r.ok, false)
+  assert.match(r.error, /^Invalid JSON: Expected “,” or “}” .*\(line 3, column 26\)$/)
+})
+
+test("strip keeps every character's position", () => {
+  const Jsonc = load("Jsonc")
+  const text = '{ // c\n "a": 1, /* x\n y */ "b": [2,],\n}'
+  const stripped = Jsonc.strip(text)
+  assert.equal(stripped.length, text.length)
+  assert.deepEqual(stripped.split("\n").map(l => l.length), text.split("\n").map(l => l.length))
+  assert.deepEqual(JSON.parse(stripped), { a: 1, b: [2] })
+})

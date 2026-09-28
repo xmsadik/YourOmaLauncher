@@ -128,6 +128,8 @@ QtObject {
       check("bookmark sources", Bookmarks.sources(Bookmarks.userDataDirs("/c", "/h"), ["/c/chromium/Profile 2/Bookmarks", "/c/chromium/Default/Bookmarks"], {}).map(function(x) { return x.displayName }),
         ["Chromium (Default)", "Chromium (Profile 2)"])
       check("editing form", Editing.isValid(Editing.emptyForm("url")), false)
+      var damaged = ConfigSerializer.deserialize('{\n  "version": 2,\n  "root": { "id": "root" "type": "folder" }\n}')
+      check("damaged config names the line in V4", [damaged.ok, /\(line 3, column 26\)$/.test(damaged.error)], [false, true])
       check("newId", /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(Model.newId()), true)
 
       // Timing in V4 itself.
