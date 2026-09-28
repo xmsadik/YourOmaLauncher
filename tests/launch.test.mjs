@@ -28,6 +28,12 @@ test("expand leaves unknown variables, mid-string ~ and escaped $ as written", (
   assert.equal(EnvExpander.expand(null, ENV), null)
 })
 
+test("env can be a lookup function, as Quickshell.env is in the shell", () => {
+  const env = name => ({ HOME: "/home/f", EMPTY: "" })[name]
+  assert.equal(EnvExpander.expand("~/a/$EMPTY/$MISSING", env), "/home/f/a//$MISSING")
+  assert.deepEqual(LaunchPlan.planFor(Model.createNode("path", { target: "~/x" }), settings, env).argv.slice(-1), ["/home/f/x"])
+})
+
 // ---- shellWords ----
 
 for (const [input, words] of [

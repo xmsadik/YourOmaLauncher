@@ -4,8 +4,9 @@ A launcher you build yourself, for [Omarchy](https://omarchy.org). Put apps, fil
 commands and links into nested folders, then open any of them from the keyboard with fuzzy search
 across the whole tree. Nothing is indexed automatically; everything in it is something you put there.
 
-> **Status: early development (0.1.0).** The panel opens and closes, but the tree, search and editing
-> are still being built. See [PLAN.md](PLAN.md).
+> **Status: in development (0.1.0).** Browsing, search and launching work. Adding and editing items
+> from the panel comes next; until then, edit the config file (see [Config](#config)). See
+> [PLAN.md](PLAN.md).
 
 ## Requirements
 
@@ -24,6 +25,80 @@ Then bind a key in `~/.config/hypr/bindings.lua`:
 o.bind("SUPER + D", "YourOmaLauncher", "omarchy-shell shell toggle io.github.xmsadik.youromalauncher '{}'")
 ```
 
+## Keyboard
+
+With the search empty you browse folders; typing searches the whole tree.
+
+| Key | Browsing | Searching |
+|---|---|---|
+| `↑` `↓` | Move the selection (wraps around) | Same, through the results |
+| `Page Up` `Page Down` | Move a page | Same |
+| `Home` `End` | First / last item | Same |
+| `Enter` | Open a folder, launch anything else | Same (a folder result opens that folder) |
+| `→` `Tab` | Open the selected folder | — |
+| `←` `Backspace` | Go up a folder | `Backspace` deletes a character |
+| `Ctrl+Enter` | — | Show the result in its folder |
+| `Ctrl+U` | — | Clear the search |
+| `Esc` | Close | Clear the search |
+| `Ctrl+R` | Reload the config file now | Same |
+| `Ctrl+Shift+R` | Restore the backup, when the config file is damaged | Same |
+
+Click selects a row; double-click opens it.
+
+Items marked "ask before launching" show a confirmation first; `Enter` launches, `Esc` cancels.
+
+## Config
+
+Everything lives in `~/.config/youromalauncher/`:
+
+| File | What it is |
+|---|---|
+| `config.json` | Your tree and settings. Hand-editable; comments and trailing commas are fine. The panel picks up changes as soon as you save. |
+| `config.backup.json` | The version before the last save the panel made. |
+| `usage.json` | How often and how recently you launched each item; used to rank search results. |
+| `state.json` | Where the panel was left, for `rememberLastLocation`. |
+
+Start from [config.example.json](config.example.json). Each item has an `id` (any unique text), a
+`type`, a `name`, and the fields for its type:
+
+| `type` | Fields | What happens |
+|---|---|---|
+| `folder` | `children` | Opens the folder |
+| `app` | `desktopId` (an installed app, e.g. `org.gnome.Nautilus`) **or** `target` (a program) + `arguments` + `workingDirectory` | Starts the app |
+| `path` | `target` | Opens the file or folder with its default app |
+| `url` | `target` | Opens in your browser (`https://` is added to a bare host) |
+| `command` | `command`, `shell` (`bash`, `zsh`, `fish`, `sh`, or `null` for your login shell), `window` (`terminal` or `hidden`), `keepOpen`, `workingDirectory` | Runs the command in a terminal (staying open afterwards if `keepOpen`) or in the background |
+| `separator` | — | A divider line |
+
+Optional on every item: `keywords` (extra search terms), `description` (shown on the right and
+searched), `confirmLaunch` (ask first), and `icon`:
+
+```jsonc
+"icon": { "kind": "icon",  "value": "firefox" }            // a theme icon name
+"icon": { "kind": "file",  "value": "~/Pictures/logo.png" } // an image file
+"icon": { "kind": "glyph", "value": "󰅩" }                  // a Nerd Font glyph
+"icon": { "kind": "emoji", "value": "🚀" }
+```
+
+Without an icon, apps show their installed icon and everything else a glyph for its type. `~`,
+`$VAR` and `${VAR}` work in targets, arguments and working directories. Programs are started through
+your login shell's environment, so everything on your `PATH` works; if a program or path doesn't
+exist, you get a notification.
+
+Settings (`"settings"` at the top of the file): `closeAfterLaunch` (default `true`),
+`maxVisibleItems` (8), `defaultShell` (`null` = your login shell), `rememberLastLocation` (`false`),
+`showHintBar` (`true`).
+
+### Coming from the Windows version
+
+Copy your Windows `config.json` over `~/.config/youromalauncher/config.json`. It's converted as it
+loads: nothing is dropped, but items that can't work on Linux as they are (Windows paths, PowerShell
+or cmd commands, run as administrator) are marked with 󰀦, and the status line tells you what to
+change when you select one. Your `usage.json` works unchanged.
+
+If the file is damaged, the panel keeps showing the last good version, says what's wrong, and doesn't
+write to the file until you fix it or restore the backup.
+
 ## Remove
 
 ```bash
@@ -37,13 +112,18 @@ Also delete the `SUPER + D` line from `~/.config/hypr/bindings.lua`.
 
 ```bash
 omarchy plugin update io.github.xmsadik.youromalauncher
+omarchy restart shell
 ```
+
+The restart is needed because omarchy-shell (4.0.4) keeps running a plugin's old code after an
+update until it restarts.
 
 ## Development
 
-The plugin is plain QML plus JavaScript libraries in `lib/` (the logic ported from the Windows app:
-config format, tree edits, search, launch plans). The libraries have no QML dependencies, so they are
-tested outside the shell:
+The plugin is QML (`Launcher.qml` for the panel, `ConfigStore.qml` for the files, `NodeIcon.qml`)
+plus JavaScript libraries in `lib/`: the logic ported from the Windows app (config format, tree
+edits, search, launch plans). The libraries have no QML dependencies, so they are tested outside
+the shell:
 
 ```bash
 npm test            # Node's built-in test runner, no packages to install
@@ -53,7 +133,7 @@ npm run test:qml    # the same libraries inside Qt's V4 engine (needs qml6), wit
 V4 is the engine omarchy-shell runs, and it is much slower than Node, so keep `npm run test:qml`
 green for anything on the search path.
 
-To try your working copy in the shell, link it into the plugin directory:
+To try your working copy in the shell, link it into the plugin directory once:
 
 ```bash
 ln -s "$PWD" ~/.config/omarchy/plugins/io.github.xmsadik.youromalauncher
@@ -61,7 +141,9 @@ omarchy-shell shell rescanPlugins
 omarchy plugin enable io.github.xmsadik.youromalauncher
 ```
 
-Saving any file reloads the plugin.
+After changing QML or `lib/`, run `npm run reload` (validates, then restarts the shell; a rescan
+alone doesn't load changed code). The shell's log: `quickshell log -p /usr/share/omarchy/shell`.
+Set `YOUROMALAUNCHER_CONFIG_DIR` in the shell's environment to use a different config folder.
 
 ## License
 

@@ -9,6 +9,7 @@ import "../../lib/Usage.js" as Usage
 import "../../lib/LaunchPlan.js" as LaunchPlan
 import "../../lib/TargetName.js" as TargetName
 import "../../lib/PathTrimmer.js" as PathTrimmer
+import "../../lib/Listing.js" as Listing
 
 // Runs the libraries inside Qt's V4 engine, the one omarchy-shell uses, since the Node tests can't
 // prove V4 accepts the same code. Checks a sample of behaviors against the Node test expectations and
@@ -107,6 +108,13 @@ QtObject {
         ["omarchy", "launch", "browser", "https://github.com"])
       check("target name", TargetName.suggestName("https://www.anthropic.com/x", null), "www.anthropic.com")
       check("path trim", PathTrimmer.trimStart("abc › abcdefghij", 5, function(s) { return s.length }), "…ghij")
+      var listed = Listing.folderRows(root)
+      check("listing", listed.map(function(r) { return r.node.name }), ["Sub", "Sub (copy)", "Visual Studio Code", "vscode-notes.txt"])
+      check("highlight", Listing.highlight("a<b", [0], "#fff"), '<b><font color="#fff">a</font></b>&lt;b')
+      check("glyph", Listing.fallbackGlyph({ type: "folder" }).length > 0, true)
+      check("execArgv", LaunchPlan.execArgv({ argv: ["x"], workingDirectory: "/tmp" }).slice(0, 2).concat(LaunchPlan.execArgv({ argv: ["x"], workingDirectory: "/tmp" }).slice(3)),
+        ["bash", "-lc", "youromalauncher", "/tmp", "", "", "x"])
+      check("env function", LaunchPlan.planFor(Model.createNode("path", { target: "~/x" }), Model.defaultSettings(), function(n) { return n === "HOME" ? "/h" : undefined }).argv.slice(-1), ["/h/x"])
       check("newId", /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(Model.newId()), true)
 
       // Timing in V4 itself.

@@ -46,7 +46,7 @@ Target: an Omarchy **Quattro** (4.0.x) shell plugin, published on **plugins.omar
 | # | Decision | Why |
 |---|---|---|
 | M1 | **Pure QML + JS rewrite.** Port `Launcher.Core` logic to `.pragma library` JS modules and rewrite the UI in QML. Don't ship a .NET helper binary. | The shell only runs QML/JS. A bundled binary means disclosure, per-architecture builds and a runtime dependency. The Core logic is small and algorithmic, so it ports cleanly. |
-| M2 | Kind `overlay`, `keepLoaded: true`, entry `Launcher.qml` | Same model as clipboard/emojis, so opening it is instant (the Windows spec's < 100 ms goal comes for free). |
+| M2 | Kind `overlay`, entry `Launcher.qml`, **`keepLoaded: false`** *(revised in Phase 2)* | Measured: opening takes the same time with or without `keepLoaded` (~52 ms from IPC call to visible surface, the same as the built-in clipboard, which is `keepLoaded`). Without it nothing stays in memory while closed, and the config is read fresh on every open. |
 | M3 | Tree **and settings** live in `~/.config/youromalauncher/config.json` (XDG), same JSON schema `version: 1` → `version: 2` with a migrator. Nothing goes in `shell.json`. *(Revised in Phase 1: keeping settings next to the tree gives one hand-editable file and one save path.)* | The tree is too big for inline plugin settings. The file stays hand-editable and easy to back up (keeps the original goal). |
 | M4 | Opened by a Hyprland binding, `SUPER + D` → `omarchy-shell shell toggle io.github.xmsadik.youromalauncher '{}'`. Documented in the README; the plugin never edits user binds itself. | The installer never runs plugin code or hooks. `SUPER+SPACE` is already Omarchy's app launcher. |
 | M5 | Dropped: tray, single instance, start with Windows, Mica, MSIX, runAsAdmin, the hotkey-capture box, Explorer drag & drop | The shell already handles these, or they don't apply on Linux. Dropping sudo/pkexec also keeps the plugin out of the disclosure category. |
@@ -95,11 +95,20 @@ Port these as `.pragma library` modules and port the matching xUnit tests to `no
 **Finding:** V4 is 20–50× slower than Node. The straight port took a 54 ms median and 199 ms worst case per keystroke at 5,000 nodes. After precomputing per-node data, cheap rejection and a top-50 selection instead of a full sort, it's a 4 ms median and 9 ms worst case in the V4 smoke run (about 20 ms for a one-letter query on a flat 5,000-item tree). Building the index costs about 280 ms at 5,000 nodes (about 10 ms at 200), so Phase 2 rebuilds it lazily, on the first search after a change, not on every edit.
 
 ### Phase 2 — Panel and navigation (1–2 days)
-- [ ] `Launcher.qml`: centered card built from `Style`/`Color`/`Border` like Clipboard. Search row, breadcrumb, list, hint bar. Themes follow Omarchy automatically.
-- [ ] Load and save config with `FileView` (`watchChanges` = reload when the file changes outside the plugin). Atomic save (write a temp file, then `mv`) plus `config.backup.json`. If the JSON is corrupt: show an error row and offer to restore the backup.
-- [ ] Keyboard behavior from spec §6.1/§6.2: ↑↓ wrap, Enter/→/Tab, ←/Backspace, Esc hides, Home/End/PgUp/PgDn, typing switches to search, Ctrl+Enter
-- [ ] Launching, `closeAfterLaunch`, the "ask before launching" confirmation, and an error row that keeps the panel open
-- [ ] Mouse: click, double-click, right-click context menu
+- [x] `Launcher.qml`: card built from `Style`/`Color`/`Border` like Clipboard. Search row, breadcrumb, list (icons, highlighted matches, folder paths trimmed from the start), status line, hint bar. Follows the Omarchy theme.
+- [x] `NodeIcon.qml`: the node's own icon (theme name / file / glyph / emoji), else the installed app's icon (`DesktopEntries`), else a type glyph.
+- [x] `ConfigStore.qml`: `FileView` load (synchronous, no empty flash), `watchChanges` live reload, atomic saves with `config.backup.json`, damaged file → error + read-only + Ctrl+R / Ctrl+Shift+R, first run creates the folder and an empty config. `usage.json` with debounced writes; `state.json` for `rememberLastLocation`.
+- [x] Keyboard behavior from spec §6.1/§6.2 (see README)
+- [x] Launching through `bash -l` like Omarchy's `Util.execArgv`, `closeAfterLaunch`, "ask before launching" confirmation, errors in the status line; a missing program or path gives a desktop notification (a detached launch can't report back)
+- [x] Mouse: click selects, double-click opens. *(Not verified live: there's no pointer automation on this machine. Keyboard paths were all tested with `wtype`.)*
+- [ ] → Phase 3: right-click context menu (its items are editing actions)
+
+Verified live in omarchy-shell 4.0.4: first run, live reload of an edited config, search with Turkish folding, launch + usage recording, confirmation, Ctrl+Enter reveal, going up keeps the folder selected, wrap-around, review notes, missing-program notification, damaged config and recovery, remember-last-location across a fresh instance.
+
+**Findings:**
+- omarchy-shell 4.0.4 does **not** load changed plugin code on `rescanPlugins`, for symlinked or copied plugins, with or without `keepLoaded`; only a shell restart does. So the README tells users to `omarchy restart shell` after `omarchy plugin update`, and development uses `npm run reload`. Worth reporting to Omarchy.
+- Its debug-level `console.log` output isn't recorded after a restart; use `console.warn` and `quickshell log -p /usr/share/omarchy/shell`.
+- V4's `JSON.parse` error has no line or column, so a damaged config only says "Parse error". Improve in Phase 5: point at the line.
 
 ### Phase 3 — Editing UI (2–3 days)
 - [ ] Type picker (F/A/P/C/U/S) and editor form with per-type fields and an "Advanced" section
@@ -116,7 +125,7 @@ Port these as `.pragma library` modules and port the matching xUnit tests to `no
 - [ ] Export
 
 ### Phase 5 — Polish and publish prep (1 day)
-- [ ] README: what it is, screenshots, **install** (`omarchy plugin add <url> --enable`), **Hyprland bind snippet**, config format, keyboard reference, **removal** (`omarchy plugin remove <id>` plus deleting `~/.config/youromalauncher`)
+- [ ] README: *(usage, keys, config format, install/update/remove written in Phase 2)* screenshots, **install** (`omarchy plugin add <url> --enable`), **Hyprland bind snippet**, config format, keyboard reference, **removal** (`omarchy plugin remove <id>` plus deleting `~/.config/youromalauncher`)
 - [ ] LICENSE (MIT suggested). Say "no external dependencies, no binaries, no sudo" in the README.
 - [ ] `preview.png` (a screenshot of the panel on a stock Omarchy theme)
 - [x] `config.example.json` for Linux (Phase 1; a test keeps it loadable)
