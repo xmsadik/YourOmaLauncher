@@ -1,0 +1,121 @@
+{
+  // Example config.json for Your Launcher. Copy to %APPDATA%\Your Launcher\config.json
+  // (or wherever YOURLAUNCHER_CONFIG_DIR points) and edit to taste. Comments and trailing
+  // commas are fine — the parser accepts both.
+  "version": 1,
+  "settings": {
+    "hotkey": "Alt+Space",
+    "theme": "system",
+    "startWithWindows": true,
+    "closeAfterLaunch": true,
+    "maxVisibleItems": 8,
+    "defaultShell": "pwsh",
+    "rememberLastLocation": false,
+    "showHintBar": true,
+  },
+  "root": {
+    "id": "root",
+    "type": "folder",
+    "name": "Root",
+    "children": [
+      {
+        "id": "dev",
+        "type": "folder",
+        "name": "Dev",
+        "children": [
+          {
+            "id": "dev-tools",
+            "type": "folder",
+            "name": "Tools",
+            "children": [
+              {
+                "id": "vscode",
+                "type": "app",
+                "name": "VS Code",
+                "target": "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
+                "arguments": "",
+                "workingDirectory": null,
+                "runAsAdmin": false,
+                "keywords": ["editor", "ide"],
+                "description": "Code editor",
+              },
+              {
+                "id": "notepad",
+                "type": "app",
+                "name": "Notepad",
+                "target": "C:\\Windows\\notepad.exe",
+                "keywords": ["defter", "not"],
+              },
+            ],
+          },
+          {
+            "id": "dev-scripts",
+            "type": "folder",
+            "name": "Scripts",
+            "children": [
+              {
+                "id": "build-deploy",
+                "type": "command",
+                "name": "Build & Deploy",
+                "command": "Get-Date; git --version",
+                "shell": "pwsh",
+                "window": "visible",
+                "keepOpen": true,
+                "runAsAdmin": false,
+                "keywords": ["ci", "release"],
+                "description": "Runs the local build and deploy script",
+              },
+              {
+                "id": "write-marker",
+                "type": "command",
+                "name": "Write Marker File",
+                "command": "echo hi > %TEMP%\\yl.txt",
+                "shell": "cmd",
+                "window": "hidden",
+                "keepOpen": false,
+              },
+              {
+                "id": "list-services",
+                "type": "command",
+                "name": "List Running Services",
+                "command": "Get-Service | Where-Object Status -eq Running",
+                "shell": "powershell",
+                "window": "visible",
+                "keepOpen": true,
+                "runAsAdmin": false,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        "id": "documents",
+        "type": "path",
+        "name": "Documents",
+        "target": "%USERPROFILE%\\Documents",
+      },
+      {
+        "id": "haftalik-rapor",
+        "type": "path",
+        "name": "Haftalık Rapor",
+        "target": "%USERPROFILE%\\Documents\\Haftalik Rapor.xlsx",
+        "description": "Weekly report spreadsheet",
+      },
+      {
+        "id": "sifre-yoneticisi",
+        "type": "app",
+        "name": "Şifre Yöneticisi",
+        "target": "%LOCALAPPDATA%\\Programs\\KeePassXC\\KeePassXC.exe",
+        "keywords": ["password", "vault"],
+        "description": "Password manager",
+      },
+      {
+        "id": "anthropic",
+        "type": "url",
+        "name": "Anthropic",
+        "target": "https://www.anthropic.com",
+        "keywords": ["ai", "claude"],
+      },
+    ],
+  },
+}

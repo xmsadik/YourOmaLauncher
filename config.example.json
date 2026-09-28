@@ -1,0 +1,98 @@
+{
+  // Example config for YourOmaLauncher. Copy to ~/.config/youromalauncher/config.json and edit to
+  // taste. Comments and trailing commas are fine. Every field except "id", "type" and "name" is
+  // optional; see README.md for what each one does.
+  "version": 2,
+  "settings": {
+    "closeAfterLaunch": true,
+    "maxVisibleItems": 8,
+    "defaultShell": null,           // null = your login shell ($SHELL); or "bash", "zsh", "fish", "sh"
+    "rememberLastLocation": false,
+    "showHintBar": true,
+  },
+  "root": {
+    "id": "root",
+    "type": "folder",
+    "name": "Root",
+    "children": [
+      {
+        "id": "dev",
+        "type": "folder",
+        "name": "Dev",
+        "icon": { "kind": "glyph", "value": "󰅩" },
+        "children": [
+          {
+            "id": "neovim",
+            "type": "command",
+            "name": "Neovim",
+            "command": "nvim",
+            "window": "terminal",
+            "keepOpen": false,
+            "keywords": ["editor", "vim"],
+          },
+          {
+            "id": "git-status",
+            "type": "command",
+            "name": "Git status (~/Work)",
+            "command": "git status; git log --oneline -5",
+            "workingDirectory": "~/Work",
+            "keywords": ["repo"],
+            "description": "Shows the working tree, then leaves a shell open",
+          },
+          {
+            "id": "pull-quiet",
+            "type": "command",
+            "name": "Pull dotfiles quietly",
+            "command": "git -C ~/.dotfiles pull --ff-only",
+            "window": "hidden",
+          },
+        ],
+      },
+      {
+        "id": "files",
+        "type": "app",
+        "name": "Files",
+        "desktopId": "org.gnome.Nautilus",
+        "keywords": ["nautilus", "explorer"],
+      },
+      {
+        "id": "calculator",
+        "type": "app",
+        "name": "Calculator",
+        "target": "gnome-calculator",
+        "icon": { "kind": "icon", "value": "accessories-calculator" },
+      },
+      { "id": "sep-1", "type": "separator", "name": "" },
+      {
+        "id": "documents",
+        "type": "path",
+        "name": "Documents",
+        "target": "~/Documents",
+      },
+      {
+        "id": "haftalik-rapor",
+        "type": "path",
+        "name": "Haftalık Rapor",
+        "target": "$HOME/Documents/Haftalik Rapor.ods",
+        "description": "Weekly report spreadsheet",
+      },
+      {
+        "id": "anthropic",
+        "type": "url",
+        "name": "Anthropic",
+        "target": "https://www.anthropic.com",
+        "keywords": ["ai", "claude"],
+        "icon": { "kind": "emoji", "value": "🤖" },
+      },
+      {
+        "id": "power-off",
+        "type": "command",
+        "name": "Power off",
+        "command": "systemctl poweroff",
+        "window": "hidden",
+        "confirmLaunch": true,
+        "keywords": ["shutdown"],
+      },
+    ],
+  },
+}

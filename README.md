@@ -39,6 +39,30 @@ Also delete the `SUPER + D` line from `~/.config/hypr/bindings.lua`.
 omarchy plugin update io.github.xmsadik.youromalauncher
 ```
 
+## Development
+
+The plugin is plain QML plus JavaScript libraries in `lib/` (the logic ported from the Windows app:
+config format, tree edits, search, launch plans). The libraries have no QML dependencies, so they are
+tested outside the shell:
+
+```bash
+npm test            # Node's built-in test runner, no packages to install
+npm run test:qml    # the same libraries inside Qt's V4 engine (needs qml6), with search timing
+```
+
+V4 is the engine omarchy-shell runs, and it is much slower than Node, so keep `npm run test:qml`
+green for anything on the search path.
+
+To try your working copy in the shell, link it into the plugin directory:
+
+```bash
+ln -s "$PWD" ~/.config/omarchy/plugins/io.github.xmsadik.youromalauncher
+omarchy-shell shell rescanPlugins
+omarchy plugin enable io.github.xmsadik.youromalauncher
+```
+
+Saving any file reloads the plugin.
+
 ## License
 
 [MIT](LICENSE)

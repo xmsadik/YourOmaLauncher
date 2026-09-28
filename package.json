@@ -1,0 +1,11 @@
+{
+  "name": "youromalauncher",
+  "private": true,
+  "description": "Tests for the YourOmaLauncher Omarchy plugin's JavaScript libraries. Not needed to run the plugin.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/",
+    "test:qml": "tests/qml/run.sh",
+    "test:all": "node --test tests/ && tests/qml/run.sh"
+  }
+}

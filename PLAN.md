@@ -47,7 +47,7 @@ Target: an Omarchy **Quattro** (4.0.x) shell plugin, published on **plugins.omar
 |---|---|---|
 | M1 | **Pure QML + JS rewrite.** Port `Launcher.Core` logic to `.pragma library` JS modules and rewrite the UI in QML. Don't ship a .NET helper binary. | The shell only runs QML/JS. A bundled binary means disclosure, per-architecture builds and a runtime dependency. The Core logic is small and algorithmic, so it ports cleanly. |
 | M2 | Kind `overlay`, `keepLoaded: true`, entry `Launcher.qml` | Same model as clipboard/emojis, so opening it is instant (the Windows spec's < 100 ms goal comes for free). |
-| M3 | Tree config lives in `~/.config/youromalauncher/config.json` (XDG), same JSON schema `version: 1` → `version: 2` with a migrator. `shell.json` only holds small settings. | The tree is too big for inline plugin settings. The file stays hand-editable and easy to back up (keeps the original goal). |
+| M3 | Tree **and settings** live in `~/.config/youromalauncher/config.json` (XDG), same JSON schema `version: 1` → `version: 2` with a migrator. Nothing goes in `shell.json`. *(Revised in Phase 1: keeping settings next to the tree gives one hand-editable file and one save path.)* | The tree is too big for inline plugin settings. The file stays hand-editable and easy to back up (keeps the original goal). |
 | M4 | Opened by a Hyprland binding, `SUPER + D` → `omarchy-shell shell toggle io.github.xmsadik.youromalauncher '{}'`. Documented in the README; the plugin never edits user binds itself. | The installer never runs plugin code or hooks. `SUPER+SPACE` is already Omarchy's app launcher. |
 | M5 | Dropped: tray, single instance, start with Windows, Mica, MSIX, runAsAdmin, the hotkey-capture box, Explorer drag & drop | The shell already handles these, or they don't apply on Linux. Dropping sudo/pkexec also keeps the plugin out of the disclosure category. |
 | M6 | New git repo. The Windows repo stays as it is. | Different stack. Otherwise the 870 MB of `dist/` MSIX/layout history would come along. |
@@ -56,14 +56,16 @@ Target: an Omarchy **Quattro** (4.0.x) shell plugin, published on **plugins.omar
 
 | Windows | Omarchy | Launch |
 |---|---|---|
-| `app` (.exe/.lnk) | `app` = a `.desktop` id **or** an executable + args | `uwsm app -- <cmd>` / `gtk-launch <id>` via `Quickshell.execDetached` |
-| `path` | `path` | `xdg-open <path>` (folders open in the default file manager) |
-| `command` (pwsh/cmd, visible/hidden, keepOpen) | `command` with `shell: bash|zsh|fish`, `window: terminal|hidden`, `keepOpen` | terminal: `xdg-terminal-exec <shell> -lc '…; exec $SHELL'`; hidden: `execDetached([shell,'-lc',cmd])` |
-| `url` | `url` | `xdg-open` / Omarchy's browser launcher |
+| `app` (.exe/.lnk) | `app` = `desktopId` (a `.desktop` id) **or** `target` + `arguments` | `uwsm-app -- gtk-launch <id>.desktop` (same as Omarchy's AppLibrary), or `uwsm-app -- <program> <args…>` with args split POSIX-style in JS, never through a shell |
+| `path` | `path` | `uwsm-app -- xdg-open <path>` |
+| `command` (pwsh/cmd, visible/hidden, keepOpen) | `command` with `shell: bash|zsh|fish|sh|null`, `window: terminal|hidden`, `keepOpen` | terminal: `uwsm-app -- xdg-terminal-exec --title=<name> -e <shell> -l -c '<cmd>\nexec <shell>'`; hidden: `uwsm-app -- <shell> -l -c '<cmd>'`. `shell: null` = settings, then `$SHELL`, then bash |
+| `url` | `url` | http(s): `omarchy launch browser <url>` (also focuses the browser); other schemes: `uwsm-app -- xdg-open`. A bare host gets `https://` |
 | `separator` | `separator` | — |
-| `runAsAdmin` | removed (the field is ignored when importing) | — |
+| `runAsAdmin` | removed; migrated nodes that had it get a review note | — |
 
-Verify the exact Omarchy launch helpers (`omarchy launch …`, `uwsm-app`) during Phase 1 and use them, so launched apps behave like native Omarchy launches.
+Verified in Phase 1 against Omarchy 4.0.4's own launchers (`omarchy-launch-browser`, `omarchy-launch-tui`, AppLibrary.qml). Working directory defaults to `$HOME`.
+
+Migration marks anything that can't work as-is on Linux (Windows paths, PowerShell/cmd commands, run-as-admin) with a `reviewNote` on the node instead of dropping it; the UI will show those.
 
 ### Icon mapping
 `file` (png/svg) stays. `exe` → `icon` (a freedesktop theme icon name resolved with `Quickshell.iconPath`). `glyph` → a Nerd Font glyph (Omarchy ships Nerd Fonts). `emoji` stays.
@@ -80,13 +82,17 @@ Automatic icons: a `.desktop` file's `Icon=` and the MIME type icon for paths.
 
 ### Phase 1 — Core port to JS (1–2 days)
 Port these as `.pragma library` modules and port the matching xUnit tests to `node --test`, so the logic is tested outside the shell:
-- [ ] `Model.js`: node types, defaults, id generation
-- [ ] `ConfigSerializer.js`: JSONC-tolerant parsing (comments and trailing commas), key order that doesn't depend on property order, `version` migrator (v1 Windows → v2)
-- [ ] `TreeOps.js`: add, delete, move up/down, cut/paste (block pasting into its own subtree), deep duplicate with new ids
-- [ ] `TextNormalizer.js`, `FuzzyScorer.js`, `SearchEngine.js`: flat index, the tier × field-weight scorer, highlight positions, TR normalization, perf test (5,000 nodes < 16 ms)
-- [ ] `UsageScorer.js` + `usage.json` (debounced writes)
-- [ ] `LaunchPlan.js`: builds the argv for each node type (replaces `CommandLineBuilder`; quoting tests are rewritten for POSIX shells)
-- [ ] `EnvExpander.js`: `$VAR`, `${VAR}`, `~`
+- [x] `Model.js`: node types, defaults, id generation
+- [x] `Jsonc.js` + `ConfigSerializer.js`: comments and trailing commas, property order that doesn't matter on read and is fixed on write, v1 (Windows) → v2 migration with review notes
+- [x] `TreeOps.js`: add, delete, move up/down, drag reorder, cut/paste (blocks pasting into its own subtree), deep duplicate with new ids, import merge
+- [x] `TextNormalizer.js`, `FuzzyScorer.js`, `SearchEngine.js`, `PathTrimmer.js`: flat index, tier × field-weight scorer, highlight positions, Turkish normalization and collation
+- [x] `Usage.js`: record, frecency score, prune, (de)serialize. Reads the Windows `usage.json` unchanged. (Debounced writes are file I/O → Phase 2.)
+- [x] `LaunchPlan.js`: argv per node type, POSIX word splitting for app arguments, shell resolution
+- [x] `EnvExpander.js`: `$VAR`, `${VAR}`, `~`
+- [x] `TargetName.js`: name suggestions from a target (filesystem check injected)
+- [x] Tests: 151 in Node (`npm test`), including every ported xUnit case that still applies and a check that the fast search ranks exactly like a full sort; plus `npm run test:qml`, which runs the libraries in Qt's V4 engine.
+
+**Finding:** V4 is 20–50× slower than Node. The straight port took a 54 ms median and 199 ms worst case per keystroke at 5,000 nodes. After precomputing per-node data, cheap rejection and a top-50 selection instead of a full sort, it's a 4 ms median and 9 ms worst case in the V4 smoke run (about 20 ms for a one-letter query on a flat 5,000-item tree). Building the index costs about 280 ms at 5,000 nodes (about 10 ms at 200), so Phase 2 rebuilds it lazily, on the first search after a change, not on every edit.
 
 ### Phase 2 — Panel and navigation (1–2 days)
 - [ ] `Launcher.qml`: centered card built from `Style`/`Color`/`Border` like Clipboard. Search row, breadcrumb, list, hint bar. Themes follow Omarchy automatically.
@@ -104,7 +110,8 @@ Port these as `.pragma library` modules and port the matching xUnit tests to `no
 - [ ] Settings page: `closeAfterLaunch`, `maxVisibleItems`, `defaultShell`, `rememberLastLocation`, `showHintBar`
 
 ### Phase 4 — Import and migration (1 day)
-- [ ] **Windows config import**: keep folders, URLs and the tree. Flag nodes with Windows paths (`C:\`, `%APPDATA%`) as "needs attention" instead of dropping them. Drop `runAsAdmin`. Map `pwsh`/`cmd` commands to the default shell, flagged for review.
+- [x] Windows config migration logic (done in Phase 1, `ConfigSerializer.js`)
+- [ ] **Windows config import** UI: pick the old `config.json`, then merge or replace. Keep folders, URLs and the tree. Flag nodes with Windows paths (`C:\`, `%APPDATA%`) as "needs attention" instead of dropping them. Drop `runAsAdmin`. Map `pwsh`/`cmd` commands to the default shell, flagged for review.
 - [ ] Chromium/Chrome/Brave bookmark import (`~/.config/chromium/Default/Bookmarks`, including AccountBookmarks) and Netscape HTML import
 - [ ] Export
 
@@ -112,7 +119,7 @@ Port these as `.pragma library` modules and port the matching xUnit tests to `no
 - [ ] README: what it is, screenshots, **install** (`omarchy plugin add <url> --enable`), **Hyprland bind snippet**, config format, keyboard reference, **removal** (`omarchy plugin remove <id>` plus deleting `~/.config/youromalauncher`)
 - [ ] LICENSE (MIT suggested). Say "no external dependencies, no binaries, no sudo" in the README.
 - [ ] `preview.png` (a screenshot of the panel on a stock Omarchy theme)
-- [ ] `config.example.json` for Linux
+- [x] `config.example.json` for Linux (Phase 1; a test keeps it loadable)
 - [ ] `omarchy plugin validate .`. Test a clean install from the public URL on a fresh user or VM. Test theme switching and multiple monitors.
 - [ ] Carry over `tasks/lessons.md` rules (e.g. keep real user data out of the repo)
 
@@ -131,7 +138,8 @@ Port these as `.pragma library` modules and port the matching xUnit tests to `no
 - **The Quickshell/QML API isn't a public, stable contract.** Third-party plugins get limited interfaces to the shell, and `qs.Ui`/`qs.Commons` can change between Omarchy releases. Mitigation: depend on as little as possible and pin the tested Omarchy version in the README.
 - **Plugin code runs in the shell process.** A JS exception or a slow loop affects the whole desktop. Keep search synchronous but bounded, and do file I/O asynchronously through `FileView`/`Process`.
 - **Overlap with the built-in app launcher** (`SUPER+SPACE`). Position the plugin as a *hand-curated* launcher, which is its main difference.
-- **Turkish text normalization** in JS: `toLocaleLowerCase('tr-TR')` in QML's V4 engine needs testing. Use an explicit character map, as the C# version did.
+- ~~Turkish text normalization in V4~~: solved with an explicit character map and alphabet table, verified in V4 by `npm run test:qml`.
+- **Search speed in V4**: see the Phase 1 finding. Keep `npm run test:qml` green; it fails if the 5,000-node median goes over 16 ms.
 
 ## 5. Settled (2026-09-28)
 - Plugin id: **`io.github.xmsadik.youromalauncher`** (permanent). GitHub repo: `github.com/xmsadik/YourOmaLauncher`
